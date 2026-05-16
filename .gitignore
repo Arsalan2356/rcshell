@@ -1,0 +1,6 @@
+/target
+.direnv
+.envrc
+shell.nix
+data
+steamdata

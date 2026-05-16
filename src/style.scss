@@ -1,0 +1,108 @@
+:root {
+    --text: #c0caf5;
+    --base: #1a1b26;
+}
+
+* {
+    font-family: monospace;
+}
+
+window {
+    background-color: transparent;
+    color: var(--text);
+}
+
+.rbackground {
+    background: var(--base);
+    border-radius: 20px;
+    padding: 0 10px;
+}
+
+.cbackground {
+    &.inactive {
+        background: transparent;
+    }
+}
+
+.custom_b {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+}
+
+.launcher {
+    padding-left: 4px;
+    padding-top: 4pt;
+    padding-bottom: 4pt;
+    color: var(--text);
+}
+
+.workspaces {
+    padding-left: 12px;
+    padding-top: 2px;
+
+    label {
+        font-size: 14pt;
+        letter-spacing: 0px;
+        min-width: 14pt;
+        min-height: 10pt;
+        border-radius: 20px;
+        padding: 1px 2px 0px;
+        margin: 0 2.5pt;
+
+        transition: all 0.4s ease-out;
+
+        &.occupied {
+            background: linear-gradient(to top, #565f89 20%, var(--base));
+            min-width: 32px;
+        }
+
+        &.active {
+            background: linear-gradient(to top, #2ac3de 20%, var(--base));
+            min-width: 46px;
+        }
+    }
+}
+
+.client-title {
+    padding: 2px 0 0 8pt;
+    font-size: 10pt;
+}
+
+.clients {
+    padding: 0 1px;
+}
+
+.baseclient {
+    &.clientchild {
+        border: none;
+        transition: all 0.2s ease-in-out;
+        padding-top: 3px;
+        border-radius: 25px;
+        min-width: 36px;
+
+        &.active {
+            background: linear-gradient(to top, #2ac3de 20%, var(--base));
+            min-width: 48px;
+        }
+    }
+}
+
+.inline {
+    background-color: transparent;
+    padding: 0px;
+}
+
+.systray {
+    /* background-color: #171829; */
+    /* border: 2px solid #171829; */
+    /* border-radius: 20pt; */
+    padding: 0 5pt 0 5pt;
+    font-size: 1.2em;
+}
+
+.time {
+    color: var(--text);
+    padding-right: 6px;
+}
