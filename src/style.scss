@@ -31,6 +31,10 @@ window {
     color: var(--text);
 }
 
+.volume {
+    padding-right: 5px;
+}
+
 .launcher {
     padding-left: 4px;
     padding-top: 4pt;
@@ -39,8 +43,8 @@ window {
 }
 
 .workspaces {
-    padding-left: 12px;
     padding-top: 2px;
+    min-height: 28px;
 
     label {
         font-size: 14pt;
@@ -54,12 +58,16 @@ window {
         transition: all 0.4s ease-out;
 
         &.occupied {
-            background: linear-gradient(to top, #565f89 20%, var(--base));
+            background: radial-gradient(
+                circle at bottom,
+                #565f89 20%,
+                var(--base)
+            );
             min-width: 32px;
         }
 
         &.active {
-            background: linear-gradient(to top, #2ac3de 20%, var(--base));
+            background: linear-gradient(to top, #2ac3de 5%, var(--base));
             min-width: 46px;
         }
     }
@@ -83,7 +91,7 @@ window {
         min-width: 36px;
 
         &.active {
-            background: linear-gradient(to top, #2ac3de 20%, var(--base));
+            background: linear-gradient(to top, #2ac3de 5%, var(--base));
             min-width: 48px;
         }
     }

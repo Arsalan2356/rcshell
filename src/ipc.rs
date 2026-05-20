@@ -18,7 +18,7 @@ pub fn spawn_event_listener(sender: Sender<HyprEvent>) {
 
         let path = format!("{}/hypr/{}/.socket2.sock", runtime, sig);
 
-        let stream = UnixStream::connect(path).expect("Could not connect to Hyprland socket2");
+        let stream = UnixStream::connect(path).expect("Could not connect to Hyprland Socket");
         let reader = BufReader::new(stream);
 
         for line in reader.lines() {

@@ -1,7 +1,7 @@
 use std::process::Command;
 
-use gtk4 as gtk;
-use gtk4::prelude::*;
+use gtk4::{self as gtk, EventControllerScroll};
+use gtk4::{EventControllerScrollFlags, prelude::*};
 
 pub fn workspaces() -> gtk::Box {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -66,5 +66,18 @@ pub fn workspaces() -> gtk::Box {
     }
 
     container.set_vexpand(true);
+
+    let scroll_controller = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
+
+    scroll_controller.connect_scroll(move |_, _, dy| {
+        let _ = Command::new("hyprctl")
+            .args(["dispatch", "workspace", if dy > 0.0 { "+1" } else { "-1" }])
+            .spawn();
+
+        glib::Propagation::Proceed
+    });
+
+    container.add_controller(scroll_controller);
+
     return container;
 }

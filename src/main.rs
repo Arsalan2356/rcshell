@@ -1,16 +1,25 @@
+mod audio;
+mod bluetooth;
 mod clients;
 mod host;
 mod ipc;
-mod launcher;
+mod logout;
+mod profile;
+mod time;
 mod title;
+mod volume;
 mod watcher;
 mod workspaces;
 
-use std::process::Command;
+use std::{process::Command, time::Duration};
 
+use crate::audio::setup_controllers;
+use audio::{get_player_img, inject_outline_style};
+use gdk_pixbuf::PixbufLoader;
 use gio::prelude::*;
 use glib::{self, GString};
 use gtk::prelude::*;
+use gtk4::GestureClick;
 use gtk4::{self as gtk, CssProvider, gdk::Display};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use ipc::HyprEvent;
@@ -19,14 +28,13 @@ use tokio::sync::mpsc;
 fn left(container: &mut gtk::Box) -> (gtk::Box, gtk::Label) {
     let wp = workspaces::workspaces();
     let tbox = title::title();
-    container.append(&launcher::launcher());
     container.append(&wp);
     container.append(&tbox);
 
     (wp, tbox)
 }
 
-fn center(container: &gtk::Box) -> (Vec<gtk::Image>, gtk::Box) {
+fn center(container: &gtk::Box) -> Vec<gtk::Image> {
     let imgs = clients::clients();
     let innerbox = gtk::Box::new(gtk::Orientation::Horizontal, 5);
     for i in &imgs {
@@ -34,10 +42,36 @@ fn center(container: &gtk::Box) -> (Vec<gtk::Image>, gtk::Box) {
     }
     container.append(&innerbox);
 
-    (imgs, innerbox)
+    imgs
 }
 
-fn right(container: &mut gtk::Box) -> () {}
+fn right(
+    container: &mut gtk::Box,
+) -> (
+    gtk::Revealer,
+    gtk::Image,
+    gtk::Image,
+    gtk::Image,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+) {
+    let (ad, prev, play, next) = audio::audio();
+    container.append(&ad);
+    let pf = profile::profile();
+    container.append(&pf);
+    let vol = volume::volume();
+    container.append(&vol);
+    let bt = bluetooth::bluetooth();
+    container.append(&bt);
+    let time = time::time();
+    container.append(&time);
+
+    container.append(&logout::logout());
+
+    (ad, prev, play, next, vol, bt, pf, time)
+}
 
 fn load_css() {
     let css = grass::from_path("src/style.scss", &grass::Options::default()).unwrap();
@@ -55,7 +89,20 @@ fn load_css() {
 
 fn activate(
     application: &gtk::Application,
-) -> (gtk::Box, gtk::Label, gtk::Box, Vec<gtk::Image>, gtk::Box) {
+) -> (
+    gtk::Box,
+    gtk::Label,
+    gtk::Box,
+    Vec<gtk::Image>,
+    gtk::Revealer,
+    gtk::Image,
+    gtk::Image,
+    gtk::Image,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+) {
     let window = gtk::ApplicationWindow::new(application);
 
     // Before the window is first realized, set it up to be a layer surface
@@ -95,11 +142,11 @@ fn activate(
 
     let mut center_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     center_widget.add_css_class("cbackground");
-    let (imgs, innerbox) = center(&mut center_widget);
+    let imgs = center(&mut center_widget);
 
     let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 9);
     end_widget.add_css_class("rbackground");
-    right(&mut end_widget);
+    let (ad, prev, play, next, vol, bt, pf, time) = right(&mut end_widget);
 
     root_container.set_start_widget(Some(&start_widget));
     root_container.set_center_widget(Some(&center_widget));
@@ -113,23 +160,184 @@ fn activate(
 
     window.show();
 
-    (wp, tbox, center_widget, imgs, innerbox)
+    (
+        wp,
+        tbox,
+        center_widget,
+        imgs,
+        ad,
+        prev,
+        play,
+        next,
+        vol,
+        bt,
+        pf,
+        time,
+    )
 }
 
 fn main() {
-    let application = gtk::Application::new(Some("sh.wmww.gtk-layer-example"), Default::default());
+    let application = gtk::Application::new(Some("sh.rc"), Default::default());
 
     application.connect_startup(|_| load_css());
 
     application.connect_activate(|app| {
-        let (wp, tbox, center_widget, mut imgs, mut innerbox) = activate(app);
+        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, pf, time) = activate(app);
+
+        setup_controllers!(ad, prev, play, next);
+
 
         let (sender, mut receiver) = mpsc::channel(8);
 
         let _ = ipc::spawn_event_listener(sender);
 
         glib::MainContext::default().spawn_local(async move {
+            loop {
+                time.set_label(&time::current_time());
 
+                glib::timeout_future(Duration::from_millis(500)).await;
+            }
+        });
+
+
+
+        // Background tasks
+        glib::MainContext::default().spawn_local(async move {
+            loop {
+                // Audio Player
+                let output =
+                    String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout).unwrap();
+
+                let clients: Vec<&str> = output.split("\n").collect();
+
+                if clients.len() == 0 {
+                    ad.set_reveal_child(false);
+                }
+
+                let curr_index = ad.widget_name().parse::<i32>().unwrap();
+                let ci = {
+                    if curr_index < 0 {
+                        ad.set_widget_name("0");
+                        0
+                    } else if curr_index > (clients.len() - 1) as i32 {
+                        ad.set_widget_name((clients.len() - 1).to_string().as_str());
+                        clients.len() - 1
+                    }
+                    else {
+                        curr_index as usize
+                    }
+                };
+                let inbox = ad.child().unwrap().downcast::<gtk::Box>().unwrap();
+
+                let is_playing = {
+                    let s = String::from_utf8(
+                        Command::new("playerctl")
+                            .args(["status", "-p", clients.get(ci).unwrap()])
+                            .output()
+                            .unwrap()
+                            .stdout,
+                    )
+                    .unwrap();
+                    if s.contains("Playing") { true } else { false }
+                };
+
+                let inner_revealer = inbox.first_child().unwrap().downcast::<gtk::Revealer>().unwrap();
+                let cbox = inner_revealer.child().unwrap().downcast::<gtk::CenterBox>().unwrap();
+                let play_widget = cbox.center_widget().unwrap().downcast::<gtk::Image>().unwrap();
+
+                play_widget.set_from_file(Some(format!(
+                        "/home/rc/default/assets/{}.svg",
+                        if is_playing { "pause" } else { "play" }
+                    )));
+                play_widget.set_pixel_size(22);
+
+                let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
+                let base_img = get_player_img(ci, &clients);
+                let svg = inject_outline_style(&base_img, "#c0caf5");
+                let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
+                loader.write(svg.as_bytes()).expect("Failed to load svg");
+                loader.close().expect("Failed to close loader");
+
+                let px = loader.pixbuf().expect("Failed to create pixbuf");
+                img.set_from_pixbuf(Some(&px));
+
+
+                // Volume
+                let v = String::from_utf8(
+                    Command::new("wpctl")
+                        .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
+                        .output()
+                        .unwrap()
+                        .stdout,
+                )
+                .unwrap();
+
+                let val = {
+                    if v == "0" {
+                        "0".to_string()
+                    } else {
+                        let ival = v.get(8..).unwrap().trim().parse::<f32>().unwrap();
+                        format!(
+                            "{} {}%",
+                            if ival > 0.4 { " " } else { " " },
+                            (ival * 100.0).round()
+                        )
+                    }
+                };
+
+                vol.set_text(&val);
+
+
+                // Bluetooth
+                let v = String::from_utf8(Command::new("btbattery").output().unwrap().stdout).unwrap();
+
+
+                let val = {
+                    if v == "" {
+                        "󰂯".to_string()
+                    } else {
+                        let q = v.trim();
+                        let index = f32::max(
+                            f32::min((100.0 - q.parse::<f32>().unwrap()) / 10.0, 9.0),
+                            0.0,
+                        );
+
+                        format!(
+                            "{} {}%",
+                            bluetooth::ICONS[index as usize],
+                            q.parse::<f32>().unwrap().round()
+                        )
+                    }
+                };
+
+                bt.set_text(&val);
+
+
+
+                // Audio Profile
+                let args = [
+                    "-c",
+                    "pactl -f json list cards | jq -r '.[] | select(.name | contains(\"bluez\")) | .active_profile'",
+                ];
+
+                let active_profile =
+                    String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
+
+                let label = if active_profile.contains("sbc_xq") {
+                    "XQ"
+                } else if active_profile.contains("headset") && !active_profile.contains("cvsd") {
+                    "VC"
+                } else {
+                    "UN"
+                };
+                pf.set_label(label);
+
+                glib::timeout_future(Duration::from_secs(1)).await;
+            }
+        });
+
+        // Hyprland events
+        glib::MainContext::default().spawn_local(async move {
 
             macro_rules! workspace_focus {
                 ($active : ident) => {
@@ -325,7 +533,7 @@ fn main() {
                         center_widget.remove(&center_widget.first_child().unwrap());
 
                         // Re-construct the inner box using the image function
-                        (imgs, innerbox) = center(&center_widget);
+                        imgs = center(&center_widget);
 
                         workspace_focus!(active_workspace);
 
@@ -337,7 +545,7 @@ fn main() {
                         center_widget.remove(&center_widget.first_child().unwrap());
 
                         // Re-construct the inner box using the image function
-                        (imgs, innerbox) = center(&center_widget);
+                        imgs = center(&center_widget);
 
                         workspace_focus!(active_workspace);
                     }
