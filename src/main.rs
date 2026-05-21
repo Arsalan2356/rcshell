@@ -384,7 +384,7 @@ fn main() {
 
             macro_rules! workspace_focus {
                 ($active : ident) => {
-                    let output = String::from_utf8(Command::new("bash")
+                    let output = String::from_utf8(Command::new("sh")
                             .args(["-c", "hyprctl activeworkspace -j | jq -r '(.id | tostring) + \",\" + (.windows | tostring)'"])
                             .output()
                             .expect("failed").stdout).unwrap();
@@ -481,7 +481,7 @@ fn main() {
             while let Some(msg) = receiver.recv().await {
                 match msg {
                     HyprEvent::ActiveWindow => {
-                        let title = String::from_utf8(Command::new("bash")
+                        let title = String::from_utf8(Command::new("sh")
                                 .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindowtitle | tostring)'"])
                                 .output()
                                 .expect("failed").stdout).unwrap();
@@ -489,7 +489,7 @@ fn main() {
                         tbox.set_text(&title::client_title_wrap(title.clone()));
                         tbox.set_tooltip_text(Some(&title.as_str()));
 
-                        let pt = String::from_utf8(Command::new("bash")
+                        let pt = String::from_utf8(Command::new("sh")
                                 .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindow | tostring)'"])
                                 .output()
                                 .expect("failed").stdout).unwrap();
@@ -498,9 +498,11 @@ fn main() {
                         for i in &imgs {
                             if i.widget_name().as_str() == pt.trim() {
                                 i.add_css_class("active");
+                                i.set_size_request(48, 36);
                             }
                             else if i.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
                                 i.remove_css_class("active");
+                                i.set_size_request(36, 36);
                             }
                         }
 
@@ -542,10 +544,12 @@ fn main() {
                                     start = Some(counter);
                                 }
                                 i.add_css_class("clientchild");
+                                i.set_size_request(36, 36);
                             }
                             else {
                                 if i.css_classes().contains(&GString::from_string_checked("clientchild".to_string()).unwrap()) {
                                     i.remove_css_class("clientchild");
+                                    i.set_size_request(16, 16);
                                 }
                             }
 

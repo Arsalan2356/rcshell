@@ -88,7 +88,6 @@ window {
         transition: all 0.2s ease-in-out;
         padding-top: 3px;
         border-radius: 25px;
-        min-width: 36px;
 
         &.active {
             background: linear-gradient(to top, #2ac3de 5%, var(--base));

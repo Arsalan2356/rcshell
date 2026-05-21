@@ -41,6 +41,7 @@ pub fn clients() -> Vec<gtk::Image> {
         let window_class = split_data.get(5).unwrap();
 
         l.add_css_class("baseclient");
+        l.set_size_request(16, 16);
         if id.parse::<usize>().unwrap() == active_workspace {
             if first {
                 fimage = Some(i);
@@ -48,6 +49,7 @@ pub fn clients() -> Vec<gtk::Image> {
             }
             eimage = Some(i);
             l.add_css_class("clientchild");
+            l.set_size_request(36, 36);
         }
         if focus.parse::<i32>().unwrap() == 0 {
             l.add_css_class("active");
