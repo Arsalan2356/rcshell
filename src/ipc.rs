@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use tokio::sync::mpsc::Sender;
 
@@ -8,6 +8,33 @@ pub enum HyprEvent {
     WindowRemovedFromActive, // window closed/moved => update active + client counts
     WindowAddedToActive,     // window opened => update active + client counts
     ActiveWindow,            // workspace not changed, but focus changed => update title
+}
+
+pub fn dispatch_workspace(i: usize) {
+    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap();
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
+    let path = format!("{runtime}/hypr/{his}/.socket.sock");
+    if let Ok(mut stream) = UnixStream::connect(&path) {
+        let _ = stream.write_all(format!("dispatch workspace {i}").as_bytes());
+    }
+}
+
+pub fn dispatch_up() {
+    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap();
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
+    let path = format!("{runtime}/hypr/{his}/.socket.sock");
+    if let Ok(mut stream) = UnixStream::connect(&path) {
+        let _ = stream.write_all(format!("dispatch workspace +1").as_bytes());
+    }
+}
+
+pub fn dispatch_down() {
+    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap();
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
+    let path = format!("{runtime}/hypr/{his}/.socket.sock");
+    if let Ok(mut stream) = UnixStream::connect(&path) {
+        let _ = stream.write_all(format!("dispatch workspace -1").as_bytes());
+    }
 }
 
 pub fn spawn_event_listener(sender: Sender<HyprEvent>) {

@@ -3,6 +3,8 @@ use std::process::Command;
 use gtk4::{self as gtk, EventControllerScroll};
 use gtk4::{EventControllerScrollFlags, prelude::*};
 
+use crate::ipc::{dispatch_down, dispatch_up, dispatch_workspace};
+
 pub fn workspaces() -> gtk::Box {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     container.add_css_class("workspaces");
@@ -47,10 +49,7 @@ pub fn workspaces() -> gtk::Box {
         let click = gtk::GestureClick::new();
 
         click.connect_released(move |_, _, _, _| {
-            let _ = Command::new("hyprctl")
-                .args(["dispatch", "workspace", &i.to_string()])
-                .spawn()
-                .is_ok();
+            dispatch_workspace(i);
         });
 
         child.add_css_class("workspacechild");
@@ -70,9 +69,11 @@ pub fn workspaces() -> gtk::Box {
     let scroll_controller = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
 
     scroll_controller.connect_scroll(move |_, _, dy| {
-        let _ = Command::new("hyprctl")
-            .args(["dispatch", "workspace", if dy > 0.0 { "+1" } else { "-1" }])
-            .spawn();
+        if dy > 0.0 {
+            dispatch_up();
+        } else {
+            dispatch_down();
+        };
 
         glib::Propagation::Proceed
     });

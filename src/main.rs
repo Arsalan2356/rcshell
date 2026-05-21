@@ -243,6 +243,7 @@ fn main() {
 
 
         // Background tasks
+        // 233 ms on average
         glib::MainContext::default().spawn_local(async move {
             loop {
                 // Audio Player
@@ -378,6 +379,7 @@ fn main() {
         });
 
         // Hyprland events
+        // <20 ms on average
         glib::MainContext::default().spawn_local(async move {
 
             macro_rules! workspace_focus {
