@@ -26,6 +26,27 @@ use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use ipc::HyprEvent;
 use tokio::sync::mpsc;
 
+fn animate_pixel_size(image: &gtk::Image, from: i32, to: i32) {
+    if from == to {
+        return;
+    }
+    let steps = 16;
+    let mut current = from;
+    let step = if to > from { 1 } else { -1 };
+    let per_step = ((to - from).abs() + steps - 1) / steps;
+    let i_c = image.clone();
+
+    glib::timeout_add_local(Duration::from_millis(16), move || {
+        current += step * per_step;
+        if (step > 0 && current >= to) || (step < 0 && current <= to) {
+            i_c.set_pixel_size(to);
+            return glib::ControlFlow::Break;
+        }
+        i_c.set_pixel_size(current);
+        glib::ControlFlow::Continue
+    });
+}
+
 fn left(container: &mut gtk::Box) -> (gtk::Box, gtk::Label) {
     let wp = workspaces::workspaces();
     let tbox = title::title();
@@ -498,11 +519,12 @@ fn main() {
                         for i in &imgs {
                             if i.widget_name().as_str() == pt.trim() {
                                 i.add_css_class("active");
+                                animate_pixel_size(i, i.pixel_size(), 36);
                                 i.set_size_request(48, 36);
                             }
                             else if i.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
                                 i.remove_css_class("active");
-                                i.set_size_request(36, 36);
+                                animate_pixel_size(i, i.pixel_size(), 36);
                             }
                         }
 
@@ -544,11 +566,13 @@ fn main() {
                                     start = Some(counter);
                                 }
                                 i.add_css_class("clientchild");
+                                animate_pixel_size(i, i.pixel_size(), 36);
                                 i.set_size_request(36, 36);
                             }
                             else {
                                 if i.css_classes().contains(&GString::from_string_checked("clientchild".to_string()).unwrap()) {
                                     i.remove_css_class("clientchild");
+                                    animate_pixel_size(i, i.pixel_size(), 16);
                                     i.set_size_request(16, 16);
                                 }
                             }

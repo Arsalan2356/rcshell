@@ -32,6 +32,7 @@ pub fn clients() -> Vec<gtk::Image> {
     for line in v {
         let split_data: Vec<&str> = line.split("<separator>").collect();
         let l = gtk::Image::new();
+        l.set_pixel_size(16);
 
         let pt = *split_data.get(0).unwrap();
         let init_title = split_data.get(1).unwrap();
@@ -49,6 +50,7 @@ pub fn clients() -> Vec<gtk::Image> {
             }
             eimage = Some(i);
             l.add_css_class("clientchild");
+            l.set_pixel_size(36);
             l.set_size_request(36, 36);
         }
         if focus.parse::<i32>().unwrap() == 0 {
