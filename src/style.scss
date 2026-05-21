@@ -15,7 +15,7 @@ window {
 .rbackground {
     background: var(--base);
     border-radius: 20px;
-    padding: 0 10px;
+    padding: 2px 10px;
 }
 
 .cbackground {
@@ -103,14 +103,27 @@ window {
 }
 
 .systray {
-    /* background-color: #171829; */
-    /* border: 2px solid #171829; */
-    /* border-radius: 20pt; */
-    padding: 0 5pt 0 5pt;
-    font-size: 1.2em;
+    padding: 0 4px;
+
+    .trayitem {
+        padding: 2px 3px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+            background: #ffffff1a;
+        }
+    }
 }
 
 .time {
     color: var(--text);
     padding-right: 6px;
+}
+
+.profile {
+    padding-right: 6px;
+
+    &:vc {
+    }
 }

@@ -5,6 +5,7 @@ mod host;
 mod ipc;
 mod logout;
 mod profile;
+mod systray;
 mod time;
 mod title;
 mod volume;
@@ -56,6 +57,7 @@ fn right(
     gtk::Label,
     gtk::Label,
     gtk::Label,
+    gtk::Box,
 ) {
     let (ad, prev, play, next) = audio::audio();
     container.append(&ad);
@@ -65,12 +67,14 @@ fn right(
     container.append(&vol);
     let bt = bluetooth::bluetooth();
     container.append(&bt);
+    let systray = systray::systray();
+    container.append(&systray);
     let time = time::time();
     container.append(&time);
 
     container.append(&logout::logout());
 
-    (ad, prev, play, next, vol, bt, pf, time)
+    (ad, prev, play, next, vol, bt, pf, time, systray)
 }
 
 fn load_css() {
@@ -102,6 +106,7 @@ fn activate(
     gtk::Label,
     gtk::Label,
     gtk::Label,
+    gtk::Box,
 ) {
     let window = gtk::ApplicationWindow::new(application);
 
@@ -109,9 +114,11 @@ fn activate(
     window.init_layer_shell();
 
     // Display above normal windows
-    window.set_layer(Layer::Overlay);
+    window.set_layer(Layer::Top);
 
-    window.set_size_request(100, -1);
+    window.auto_exclusive_zone_enable();
+
+    window.set_size_request(100, 36);
 
     // Push other windows out of the way
     window.auto_exclusive_zone_enable();
@@ -144,9 +151,9 @@ fn activate(
     center_widget.add_css_class("cbackground");
     let imgs = center(&mut center_widget);
 
-    let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 9);
+    let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     end_widget.add_css_class("rbackground");
-    let (ad, prev, play, next, vol, bt, pf, time) = right(&mut end_widget);
+    let (ad, prev, play, next, vol, bt, pf, time, tray_box) = right(&mut end_widget);
 
     root_container.set_start_widget(Some(&start_widget));
     root_container.set_center_widget(Some(&center_widget));
@@ -173,16 +180,19 @@ fn activate(
         bt,
         pf,
         time,
+        tray_box,
     )
 }
 
 fn main() {
+    // Register the watcher on the bus
+
     let application = gtk::Application::new(Some("sh.rc"), Default::default());
 
     application.connect_startup(|_| load_css());
 
     application.connect_activate(|app| {
-        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, pf, time) = activate(app);
+        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, pf, time, tray_box) = activate(app);
 
         setup_controllers!(ad, prev, play, next);
 
@@ -191,6 +201,37 @@ fn main() {
 
         let _ = ipc::spawn_event_listener(sender);
 
+        let (tray_tx, mut tray_rx) = tokio::sync::mpsc::channel::<Vec<host::TrayItem>>(8);
+
+        // System Tray
+
+        glib::MainContext::default().spawn_local(async move {
+            let _watcher = watcher::StatusNotifierWatcher::spawn().await.unwrap();
+
+            let mut host = systray::host().await;
+
+            // Send initial items
+            let initial: Vec<host::TrayItem> = host.items().values().cloned().collect();
+            let _ = tray_tx.send(initial).await;
+
+            // Updater reads from channel, no host access needed
+            let updater = async move {
+                while let Some(items) = tray_rx.recv().await {
+                    let refs: Vec<&host::TrayItem> = items.iter().collect();
+                    systray::update_tray(&tray_box, &refs);
+                }
+            };
+
+            // Driver owns host exclusively, sends items on each change
+            let driver = async move {
+                let _ = host.run(tray_tx).await;
+            };
+
+            tokio::join!(driver, updater);
+        });
+
+
+        // Time
         glib::MainContext::default().spawn_local(async move {
             loop {
                 time.set_label(&time::current_time());

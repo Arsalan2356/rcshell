@@ -58,7 +58,7 @@ pub fn context_menu(label: &gtk::Label, name: String) {
             let weak_ref = popover.downgrade();
 
             btn.connect_clicked(move |btn| {
-                let status = Command::new("pactl")
+                let _status = Command::new("pactl")
                     .args(["set-card-profile", &n2, btn.widget_name().as_str()])
                     .status()
                     .is_ok();
@@ -104,9 +104,10 @@ pub fn profile() -> gtk::Label {
 
     let container = gtk::Label::new(Some(&label));
     container.add_css_class("custom_b");
+    container.add_css_class("profile");
 
     if label == "VC" {
-        container.add_css_class("profile");
+        container.add_css_class("vc");
     }
 
     context_menu(&container, name.trim().to_string());

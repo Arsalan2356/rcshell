@@ -3,21 +3,20 @@ use std::collections::HashMap;
 use zbus::zvariant::Structure;
 use zbus::{Connection, Proxy};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IconPixmap {
     pub width: i32,
     pub height: i32,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TrayItem {
     pub service: String,
     pub icon_name: String,
     pub icon_pixmaps: Vec<IconPixmap>,
-    pub status: String,
     pub tooltip: String,
-    pub menu_path: Option<String>,
+    pub _menu_path: Option<String>,
 }
 
 pub struct StatusNotifierHost {
@@ -88,7 +87,6 @@ impl StatusNotifierHost {
         let proxy = Proxy::new(conn, dest, path, "org.kde.StatusNotifierItem").await?;
 
         let icon_name: String = proxy.get_property("IconName").await.unwrap_or_default();
-        let status: String = proxy.get_property("Status").await.unwrap_or_default();
 
         let tooltip: String = proxy
             .get_property::<Structure>("ToolTip")
@@ -101,7 +99,7 @@ impl StatusNotifierHost {
             })
             .unwrap_or_default();
 
-        let icon_pixmaps = proxy
+        let icon_pixmaps: Vec<IconPixmap> = proxy
             .get_property::<Vec<(i32, i32, Vec<u8>)>>("IconPixmap")
             .await
             .unwrap_or_default()
@@ -124,14 +122,16 @@ impl StatusNotifierHost {
             service: service.to_string(),
             icon_name,
             icon_pixmaps,
-            status,
             tooltip,
-            menu_path,
+            _menu_path: menu_path,
         })
     }
 
     // Run the event loop, keeping the item list in sync
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(
+        &mut self,
+        tx: tokio::sync::mpsc::Sender<Vec<TrayItem>>,
+    ) -> anyhow::Result<()> {
         let watcher = self.watcher_proxy().await?;
         let mut added = watcher
             .receive_signal("StatusNotifierItemRegistered")
@@ -150,12 +150,18 @@ impl StatusNotifierHost {
         .await?;
         let mut name_changes = dbus_proxy.receive_signal("NameOwnerChanged").await?;
 
+        self.fetch_all_items().await;
+        let _ = tx.send(self.items.values().cloned().collect()).await;
+
         loop {
             tokio::select! {
                 Some(msg) = added.next() => {
                     if let Ok((service,)) = msg.body().deserialize::<(String,)>() {
                         match Self::fetch_item(&self.conn, &service).await {
-                            Ok(item) => { self.items.insert(service, item); }
+                            Ok(item) => {
+                                self.items.insert(service, item);
+                                let _ = tx.send(self.items.values().cloned().collect()).await;
+                            }
                             Err(e) => eprintln!("Failed to fetch {service}: {e}"),
                         }
                     }
@@ -163,6 +169,7 @@ impl StatusNotifierHost {
                 Some(msg) = removed.next() => {
                     if let Ok((service,)) = msg.body().deserialize::<(String,)>() {
                         self.items.remove(&service);
+                        let _ = tx.send(self.items.values().cloned().collect()).await;
                     }
                 }
                 Some(msg) = name_changes.next() => {
@@ -171,6 +178,7 @@ impl StatusNotifierHost {
                     if let Ok((name, _old, new_owner)) = msg.body().deserialize::<(String, String, String)>() {
                         if new_owner.is_empty() {
                             self.items.remove(&name);
+                            let _ = tx.send(self.items.values().cloned().collect()).await;
                         }
                     }
                 }

@@ -28,8 +28,8 @@ pub fn bluetooth() -> gtk::Label {
     };
 
     let container = gtk::Label::new(Some(&val));
+    container.set_valign(gtk::Align::Center);
     container.add_css_class("custom_b");
-    container.add_css_class("volume");
 
     // Add event controller
     let click = gtk::GestureClick::new();

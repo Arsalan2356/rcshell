@@ -12,9 +12,20 @@ impl WatcherState {
     async fn register_status_notifier_item(
         &mut self,
         service: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(signal_context)] ctx: SignalEmitter<'_>,
     ) -> fdo::Result<()> {
-        let owned = service.to_string();
+        // If service is a path, prepend the sender's unique bus name
+        let owned = if service.starts_with('/') {
+            let sender = header
+                .sender()
+                .ok_or(fdo::Error::Failed("no sender".into()))?
+                .to_string();
+            format!("{sender}{service}") // e.g. ":1.234/org/ayatana/NotificationItem/nm_applet"
+        } else {
+            service.to_string()
+        };
+
         if self.items.insert(owned.clone()) {
             Self::status_notifier_item_registered(&ctx, &owned).await?;
         }
@@ -64,7 +75,7 @@ impl WatcherState {
 }
 
 pub struct StatusNotifierWatcher {
-    conn: Connection,
+    _conn: Connection,
 }
 
 impl StatusNotifierWatcher {
@@ -80,10 +91,6 @@ impl StatusNotifierWatcher {
             .build()
             .await?;
 
-        Ok(Self { conn })
-    }
-
-    pub fn connection(&self) -> &Connection {
-        &self.conn
+        Ok(Self { _conn: conn })
     }
 }
