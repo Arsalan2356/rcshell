@@ -78,7 +78,7 @@ fn right(
 }
 
 fn load_css() {
-    let css = grass::from_path("src/style.scss", &grass::Options::default()).unwrap();
+    let css = grass::from_string(include_str!("style.scss"), &grass::Options::default()).unwrap();
 
     let provider = CssProvider::new();
     provider.load_from_data(&css);
