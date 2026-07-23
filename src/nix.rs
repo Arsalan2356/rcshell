@@ -1,5 +1,4 @@
 use gtk4 as gtk;
-use gtk4::prelude::*;
 
 use crate::audio::svg_to_img;
 

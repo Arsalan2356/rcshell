@@ -413,57 +413,59 @@ fn main() {
             }
         });
 
+        macro_rules! workspace_focus {
+            ($active : ident) => {
+                let output = String::from_utf8(Command::new("sh")
+                        .args(["-c", "hyprctl activeworkspace -j | jq -r '(.id | tostring) + \",\" + (.windows | tostring)'"])
+                        .output()
+                        .expect("failed").stdout).unwrap();
+
+                let $active = output.get(0..1).unwrap().parse::<usize>().unwrap();
+                let num_windows = output.get(2..3).unwrap().parse::<usize>().unwrap();
+
+                let mut curr_child = wp.first_child().unwrap();
+                let mut upd = 0;
+
+                for i in 1..=8 {
+
+                    if curr_child.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
+                        curr_child.remove_css_class("active");
+                        upd += 1;
+                    }
+
+                    if i == $active {
+                        curr_child.add_css_class("active");
+                        upd += 1;
+                    }
+
+                    if upd == 2 { break };
+                    if i < 8 {
+                        curr_child = curr_child.next_sibling().unwrap();
+                    }
+                }
+
+
+                let c_classes = center_widget.css_classes();
+                if num_windows > 0 {
+                    if c_classes.contains(&GString::from_string_checked("inactive".to_string()).unwrap()) {
+                        center_widget.remove_css_class("inactive");
+                        center_widget.set_opacity(1.0);
+                    }
+                }
+                else {
+                    if !c_classes.contains(&GString::from_string_checked("inactive".to_string()).unwrap()) {
+                        center_widget.add_css_class("inactive");
+                        center_widget.set_opacity(0.0);
+                    };
+                }
+            }
+        }
+
+
+        let last_state = std::cell::RefCell::new([0usize; 8]);
         // Hyprland events
         // <20 ms on average
         glib::MainContext::default().spawn_local(async move {
-
-            macro_rules! workspace_focus {
-                ($active : ident) => {
-                    let output = String::from_utf8(Command::new("sh")
-                            .args(["-c", "hyprctl activeworkspace -j | jq -r '(.id | tostring) + \",\" + (.windows | tostring)'"])
-                            .output()
-                            .expect("failed").stdout).unwrap();
-
-                    let $active = output.get(0..1).unwrap().parse::<usize>().unwrap();
-                    let num_windows = output.get(2..3).unwrap().parse::<usize>().unwrap();
-
-                    let mut curr_child = wp.first_child().unwrap();
-                    let mut upd = 0;
-
-                    for i in 1..=8 {
-
-                        if curr_child.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
-                            curr_child.remove_css_class("active");
-                            upd += 1;
-                        }
-
-                        if i == $active {
-                            curr_child.add_css_class("active");
-                            upd += 1;
-                        }
-
-                        if upd == 2 { break };
-                        if i < 8 {
-                            curr_child = curr_child.next_sibling().unwrap();
-                        }
-                    }
-
-
-                    let c_classes = center_widget.css_classes();
-                    if num_windows > 0 {
-                        if c_classes.contains(&GString::from_string_checked("inactive".to_string()).unwrap()) {
-                            center_widget.remove_css_class("inactive");
-                            center_widget.set_opacity(1.0);
-                        }
-                    }
-                    else {
-                        if !c_classes.contains(&GString::from_string_checked("inactive".to_string()).unwrap()) {
-                            center_widget.add_css_class("inactive");
-                            center_widget.set_opacity(0.0);
-                        };
-                    }
-                }
-            }
 
             let client_counts = || {
                 let mut data: [usize; 8] = [0; 8];
@@ -483,33 +485,37 @@ fn main() {
                     data[num - 1] = windows;
                 }
 
-                let mut curr_child = wp.first_child().unwrap().downcast::<gtk::Label>().unwrap();
+                let mut p = last_state.borrow_mut();
+                if data != *p {
+                    *p = data;
+                    let mut curr_child = wp.first_child().unwrap().downcast::<gtk::Label>().unwrap();
 
+                    for i in 1..=8 {
+                        let windows = data[i - 1];
 
-                for i in 1..=8 {
-                    let windows = data[i - 1];
+                        let mkp = if windows > 0 {
+                            if !curr_child.css_classes().contains(&GString::from_string_checked("occupied".to_string()).unwrap()) {
+                                curr_child.add_css_class("occupied");
+                            }
 
-                    let mkp = if windows > 0 {
-                        if !curr_child.css_classes().contains(&GString::from_string_checked("occupied".to_string()).unwrap()) {
-                            curr_child.add_css_class("occupied");
+                            format!(
+                                "<span size='x-small' rise='10000'>{}</span><span rise='3000'>/</span><span size='x-small'>{}</span>",
+                                i, windows,
+                            )
+                        } else {
+                            if curr_child.css_classes().contains(&GString::from_string_checked("occupied".to_string()).unwrap()) {
+                                curr_child.remove_css_class("occupied");
+                            }
+                            format!("{}", i)
+                        };
+                        curr_child.set_markup(mkp.as_str());
+
+                        if i < 8 {
+                            curr_child = curr_child.next_sibling().unwrap().downcast::<gtk::Label>().unwrap();
                         }
-
-                        format!(
-                            "<span size='x-small' rise='10000'>{}</span><span rise='3000'>/</span><span size='x-small'>{}</span>",
-                            i, windows,
-                        )
-                    } else {
-                        if curr_child.css_classes().contains(&GString::from_string_checked("occupied".to_string()).unwrap()) {
-                            curr_child.remove_css_class("occupied");
-                        }
-                        format!("{}", i)
-                    };
-                    curr_child.set_markup(mkp.as_str());
-
-                    if i < 8 {
-                        curr_child = curr_child.next_sibling().unwrap().downcast::<gtk::Label>().unwrap();
                     }
                 }
+
             };
 
 
@@ -636,6 +642,8 @@ fn main() {
                     }
                 }
             }
+
+            glib::timeout_future(Duration::from_millis(150)).await;
         });
 
         // Nix Flake
