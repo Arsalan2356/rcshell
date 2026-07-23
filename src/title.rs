@@ -21,7 +21,9 @@ pub fn client_title_wrap(s: String) -> String {
     if v.len() < 35 {
         return v.trim().to_string();
     } else {
-        return format!("{} ...", v.get(0..35).unwrap()).trim().to_string();
+        return format!("{} ...", v.get(0..35).unwrap_or_default())
+            .trim()
+            .to_string();
     }
 }
 

@@ -1,6 +1,7 @@
 :root {
     --text: #c0caf5;
     --base: #1a1b26;
+    --yellow: #facc15;
 }
 
 * {
@@ -122,7 +123,8 @@ window {
 
 .profile {
     padding-right: 6px;
+}
 
-    &:vc {
-    }
+.vc {
+    color: var(--yellow);
 }

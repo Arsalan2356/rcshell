@@ -4,6 +4,7 @@ mod clients;
 mod host;
 mod ipc;
 mod logout;
+mod nix;
 mod profile;
 mod systray;
 mod time;
@@ -25,6 +26,8 @@ use gtk4::{self as gtk, CssProvider, gdk::Display};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use ipc::HyprEvent;
 use tokio::sync::mpsc;
+
+const THREE_DAYS: i64 = 60 * 60 * 24 * 3;
 
 fn animate_pixel_size(image: &gtk::Image, from: i32, to: i32) {
     if from == to {
@@ -76,6 +79,7 @@ fn right(
     gtk::Image,
     gtk::Label,
     gtk::Label,
+    gtk::Image,
     gtk::Label,
     gtk::Label,
     gtk::Box,
@@ -88,6 +92,8 @@ fn right(
     container.append(&vol);
     let bt = bluetooth::bluetooth();
     container.append(&bt);
+    let nix = nix::nix();
+    container.append(&nix);
     let systray = systray::systray();
     container.append(&systray);
     let time = time::time();
@@ -95,7 +101,7 @@ fn right(
 
     container.append(&logout::logout());
 
-    (ad, prev, play, next, vol, bt, pf, time, systray)
+    (ad, prev, play, next, vol, bt, nix, pf, time, systray)
 }
 
 fn load_css() {
@@ -125,6 +131,7 @@ fn activate(
     gtk::Image,
     gtk::Label,
     gtk::Label,
+    gtk::Image,
     gtk::Label,
     gtk::Label,
     gtk::Box,
@@ -174,7 +181,7 @@ fn activate(
 
     let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     end_widget.add_css_class("rbackground");
-    let (ad, prev, play, next, vol, bt, pf, time, tray_box) = right(&mut end_widget);
+    let (ad, prev, play, next, vol, bt, nix, pf, time, tray_box) = right(&mut end_widget);
 
     root_container.set_start_widget(Some(&start_widget));
     root_container.set_center_widget(Some(&center_widget));
@@ -199,6 +206,7 @@ fn activate(
         next,
         vol,
         bt,
+        nix,
         pf,
         time,
         tray_box,
@@ -213,7 +221,7 @@ fn main() {
     application.connect_startup(|_| load_css());
 
     application.connect_activate(|app| {
-        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, pf, time, tray_box) = activate(app);
+        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, nix, pf, time, tray_box) = activate(app);
 
         setup_controllers!(ad, prev, play, next);
 
@@ -394,6 +402,12 @@ fn main() {
                     "UN"
                 };
                 pf.set_label(label);
+                if label == "VC" {
+                    pf.add_css_class("vc");
+                }
+                else if pf.has_css_class("vc") {
+                    pf.remove_css_class("vc");
+                }
 
                 glib::timeout_future(Duration::from_secs(1)).await;
             }
@@ -623,6 +637,64 @@ fn main() {
                 }
             }
         });
+
+        // Nix Flake
+        glib::MainContext::default().spawn_local(async move {
+            loop {
+
+                let mut svg = std::fs::read_to_string("/home/rc/default/assets/nix-snowflake-white.svg").unwrap();
+
+
+                // Check the flake for uncommitted changes
+                let output = Command::new("git")
+                    .args(["-C", "/home/rc/flake", "status", "--porcelain"])
+                    .output()
+                    .unwrap();
+
+
+                let mut p_changes = "".to_string();
+
+                // Check how many days it has been since the last nix update
+                let last_update = String::from_utf8(
+                    Command::new("jq")
+                        .args(["-r", ".nodes[\"nixpkgs-master\"].locked.lastModified", "/home/rc/flake/flake.lock"])
+                        .output()
+                        .unwrap()
+                        .stdout,
+                )
+                .unwrap();
+
+                let parsed_update = last_update.trim().parse::<i64>();
+                let update_ok = parsed_update.is_ok();
+                let t_elapsed = chrono::Local::now().timestamp() - parsed_update.unwrap_or(0i64);
+
+                if update_ok && t_elapsed > THREE_DAYS {
+                    svg = nix::adjust_nix(svg.as_str(), "#dc2626");
+                }
+                else if !output.stdout.is_empty() {
+                    svg = nix::adjust_nix(svg.as_str(), "#fdb022");
+                    p_changes = format!("\nPending Changes : {} files", String::from_utf8(output.stdout).unwrap().lines().count());
+                }
+                else {
+                    svg = nix::adjust_nix(svg.as_str(), "#c0caf5");
+                }
+
+                let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
+                loader.write(svg.as_bytes()).expect("Failed to load svg");
+                loader.close().expect("Failed to close loader");
+
+                let px = loader.pixbuf().expect("Failed to create pixbuf");
+                nix.set_from_pixbuf(Some(&px));
+
+                let tooltip = format!("Last Update: {}{}", nix::pretty_time(t_elapsed), p_changes);
+
+                nix.set_tooltip_text(Some(&tooltip));
+
+                glib::timeout_future(Duration::from_secs(1)).await;
+            }
+        });
+
+
     });
 
     application.run();

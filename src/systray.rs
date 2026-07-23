@@ -80,26 +80,37 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem) {
         });
     });
 
-    let right = gtk::GestureClick::new();
-    right.set_button(3);
-    let svc = service.clone();
-    right.connect_released(move |_, _, _, _| {
-        println!("right click on {svc}");
-        let svc = svc.clone();
-        glib::spawn_future_local(async move {
-            let conn = Connection::session().await.unwrap();
-            println!("calling ContextMenu on {svc}");
-            let (dest, path) = parse_service(&svc);
-            println!("dest={dest} path={path}");
-            if let Ok(proxy) = Proxy::new(&conn, dest, path, "org.kde.StatusNotifierItem").await {
-                let res = proxy.call_method("ContextMenu", &(0i32, 0i32)).await;
-                println!("ContextMenu result: {res:?}");
-            }
-        });
-    });
+    // TODO Rewrite the system here to keep a menu for clients and show that when we're right-clicking
+    // Or call Activate/SecondaryActivate
+
+    // let right = gtk::GestureClick::new();
+    // right.set_button(3);
+    // let svc = service.clone();
+    // right.connect_released(move |_, _, x, y| {
+    //     println!("right click on {svc}");
+    //     let svc = svc.clone();
+    //     glib::spawn_future_local(async move {
+    //         let conn = Connection::session().await.unwrap();
+    //         println!("calling ContextMenu on {svc}");
+    //         let (dest, path) = parse_service(&svc);
+    //         println!("dest={dest} path={path}");
+    //         if let Ok(proxy) = Proxy::new(&conn, dest, path, "org.kde.StatusNotifierItem").await {
+    //             let res = proxy
+    //                 .call_method("ContextMenu", &(x as i32, y as i32))
+    //                 .await;
+    //             println!("ContextMenu result: {res:?}");
+    //             if res.is_err() {
+    //                 let res = proxy
+    //                     .call_method("SecondaryActivate", &(x as i32, y as i32))
+    //                     .await;
+    //                 println!("SecondaryActivate result: {res:?}");
+    //             }
+    //         }
+    //     });
+    // });
 
     image.add_controller(left);
-    image.add_controller(right);
+    // image.add_controller(right);
 }
 
 fn parse_service(service: &str) -> (String, String) {

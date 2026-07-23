@@ -37,6 +37,7 @@ pub fn bluetooth() -> gtk::Label {
     click.connect_released(|_, _, _, _| {
         let _ = Command::new("foot")
             .args(["-e", "bluetuith"])
+            .stderr(std::process::Stdio::null())
             .spawn()
             .is_ok();
     });

@@ -15,7 +15,8 @@ pub fn dispatch_workspace(i: usize) {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
     let path = format!("{runtime}/hypr/{his}/.socket.sock");
     if let Ok(mut stream) = UnixStream::connect(&path) {
-        let _ = stream.write_all(format!("dispatch workspace {i}").as_bytes());
+        let _ = stream
+            .write_all(format!("dispatch hl.dsp.focus({{ workspace = \"{i}\" }})").as_bytes());
     }
 }
 
@@ -24,7 +25,8 @@ pub fn dispatch_up() {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
     let path = format!("{runtime}/hypr/{his}/.socket.sock");
     if let Ok(mut stream) = UnixStream::connect(&path) {
-        let _ = stream.write_all(format!("dispatch workspace +1").as_bytes());
+        let _ =
+            stream.write_all(format!("dispatch hl.dsp.focus({{ workspace = '+1' }})").as_bytes());
     }
 }
 
@@ -33,7 +35,8 @@ pub fn dispatch_down() {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap();
     let path = format!("{runtime}/hypr/{his}/.socket.sock");
     if let Ok(mut stream) = UnixStream::connect(&path) {
-        let _ = stream.write_all(format!("dispatch workspace -1").as_bytes());
+        let _ =
+            stream.write_all(format!("dispatch hl.dsp.focus({{ workspace = '-1' }})").as_bytes());
     }
 }
 
