@@ -664,11 +664,11 @@ fn main() {
 
                 // Check how many days it has been since the last nix update
                 let last_update = String::from_utf8(
-                    Command::new("jq")
-                        .args(["-r", ".nodes[\"nixpkgs-master\"].locked.lastModified", "/home/rc/flake/flake.lock"])
+                    Command::new("git")
+                        .current_dir("/home/rc/flake")
+                        .args(["log", "-1", "--format=%ct", "flake.lock"])
                         .output()
-                        .unwrap()
-                        .stdout,
+                        .unwrap().stdout
                 )
                 .unwrap();
 
