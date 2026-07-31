@@ -33,13 +33,13 @@ fn animate_pixel_size(image: &gtk::Image, from: i32, to: i32) {
     if from == to {
         return;
     }
-    let steps = 16;
+    let steps = 64;
     let mut current = from;
     let step = if to > from { 1 } else { -1 };
     let per_step = ((to - from).abs() + steps - 1) / steps;
     let i_c = image.clone();
 
-    glib::timeout_add_local(Duration::from_millis(16), move || {
+    glib::timeout_add_local(Duration::from_millis(4), move || {
         current += step * per_step;
         if (step > 0 && current >= to) || (step < 0 && current <= to) {
             i_c.set_pixel_size(to);
@@ -265,7 +265,7 @@ fn main() {
             loop {
                 time.set_label(&time::current_time());
 
-                glib::timeout_future(Duration::from_millis(500)).await;
+                glib::timeout_future(Duration::from_millis(100)).await;
             }
         });
 
@@ -643,7 +643,7 @@ fn main() {
                 }
             }
 
-            glib::timeout_future(Duration::from_millis(150)).await;
+            glib::timeout_future(Duration::from_millis(70)).await;
         });
 
         // Nix Flake
