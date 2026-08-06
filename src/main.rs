@@ -681,7 +681,8 @@ fn main() {
                 }
                 else if !output.stdout.is_empty() {
                     svg = nix::adjust_nix(svg.as_str(), "#fdb022");
-                    p_changes = format!("\nPending Changes : {} files", String::from_utf8(output.stdout).unwrap().lines().count());
+                    let num_files =  String::from_utf8(output.stdout).unwrap().lines().count();
+                    p_changes = format!("\nPending Changes : {} file{}", num_files, if num_files > 1 {"s"} else {""});
                 }
                 else {
                     svg = nix::adjust_nix(svg.as_str(), "#c0caf5");
