@@ -128,3 +128,7 @@ window {
 .vc {
     color: var(--yellow);
 }
+
+popover.menu > contents {
+    min-height: 210px;
+}

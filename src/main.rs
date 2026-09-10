@@ -83,6 +83,7 @@ fn right(
     gtk::Label,
     gtk::Label,
     gtk::Box,
+    gtk::PopoverMenu,
 ) {
     let (ad, prev, play, next) = audio::audio();
     container.append(&ad);
@@ -94,14 +95,26 @@ fn right(
     container.append(&bt);
     let nix = nix::nix();
     container.append(&nix);
-    let systray = systray::systray();
+    let (systray, systray_menu) = systray::systray();
     container.append(&systray);
     let time = time::time();
     container.append(&time);
 
     container.append(&logout::logout());
 
-    (ad, prev, play, next, vol, bt, nix, pf, time, systray)
+    (
+        ad,
+        prev,
+        play,
+        next,
+        vol,
+        bt,
+        nix,
+        pf,
+        time,
+        systray,
+        systray_menu,
+    )
 }
 
 fn load_css() {
@@ -135,6 +148,7 @@ fn activate(
     gtk::Label,
     gtk::Label,
     gtk::Box,
+    gtk::PopoverMenu,
 ) {
     let window = gtk::ApplicationWindow::new(application);
 
@@ -181,7 +195,9 @@ fn activate(
 
     let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     end_widget.add_css_class("rbackground");
-    let (ad, prev, play, next, vol, bt, nix, pf, time, tray_box) = right(&mut end_widget);
+    let (ad, prev, play, next, vol, bt, nix, pf, time, tray_box, tray_box_popover) =
+        right(&mut end_widget);
+    tray_box_popover.set_parent(&window);
 
     root_container.set_start_widget(Some(&start_widget));
     root_container.set_center_widget(Some(&center_widget));
@@ -210,6 +226,7 @@ fn activate(
         pf,
         time,
         tray_box,
+        tray_box_popover,
     )
 }
 
@@ -221,8 +238,7 @@ fn main() {
     application.connect_startup(|_| load_css());
 
     application.connect_activate(|app| {
-        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, nix, pf, time, tray_box) = activate(app);
-
+        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, nix, pf, time, tray_box, tray_box_popover) = activate(app);
         setup_controllers!(ad, prev, play, next);
 
 
@@ -247,7 +263,7 @@ fn main() {
             let updater = async move {
                 while let Some(items) = tray_rx.recv().await {
                     let refs: Vec<&host::TrayItem> = items.iter().collect();
-                    systray::update_tray(&tray_box, &refs);
+                    systray::update_tray(&tray_box, &tray_box_popover, &refs);
                 }
             };
 

@@ -150,6 +150,7 @@ impl StatusNotifierHost {
         .await?;
         let mut name_changes = dbus_proxy.receive_signal("NameOwnerChanged").await?;
 
+        self.items.clear();
         self.fetch_all_items().await;
         let _ = tx.send(self.items.values().cloned().collect()).await;
 
