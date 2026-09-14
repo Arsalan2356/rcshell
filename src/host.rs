@@ -1,16 +1,16 @@
-use futures::StreamExt;
 use std::collections::HashMap;
+use std::time::Duration;
 use zbus::zvariant::Structure;
 use zbus::{Connection, Proxy};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IconPixmap {
     pub width: i32,
     pub height: i32,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TrayItem {
     pub service: String,
     pub icon_name: String,
@@ -56,6 +56,40 @@ impl StatusNotifierHost {
         .await?)
     }
 
+    async fn get_service_pid(conn: &Connection, service: &str) -> zbus::Result<u32> {
+        let (dest, _) = service
+            .split_once('/')
+            .map(|(d, p)| (d, p))
+            .unwrap_or((service, ""));
+
+        let proxy = Proxy::new(
+            conn,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )
+        .await?;
+
+        proxy.call("GetConnectionUnixProcessID", &(dest,)).await
+    }
+
+    async fn add_item(&mut self, service: String) {
+        match Self::get_service_pid(&self.conn, &service).await {
+            Ok(_) => match Self::fetch_item(&self.conn, &service).await {
+                Ok(item) => {
+                    self.items.insert(service, item);
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch {service}: {e}");
+                }
+            },
+
+            Err(e) => {
+                eprintln!("Ignoring stale service {service}: {e}");
+            }
+        }
+    }
+
     async fn fetch_all_items(&mut self) {
         let Ok(watcher) = self.watcher_proxy().await else {
             return;
@@ -68,12 +102,7 @@ impl StatusNotifierHost {
         };
 
         for service in services {
-            match Self::fetch_item(&self.conn, &service).await {
-                Ok(item) => {
-                    self.items.insert(service, item);
-                }
-                Err(e) => eprintln!("Failed to fetch {service}: {e}"),
-            }
+            self.add_item(service).await;
         }
     }
 
@@ -132,58 +161,16 @@ impl StatusNotifierHost {
         &mut self,
         tx: tokio::sync::mpsc::Sender<Vec<TrayItem>>,
     ) -> anyhow::Result<()> {
-        let watcher = self.watcher_proxy().await?;
-        let mut added = watcher
-            .receive_signal("StatusNotifierItemRegistered")
-            .await?;
-        let mut removed = watcher
-            .receive_signal("StatusNotifierItemUnregistered")
-            .await?;
-
-        // Also watch for items that vanish without unregistering
-        let dbus_proxy = Proxy::new(
-            &self.conn,
-            "org.freedesktop.DBus",
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-        )
-        .await?;
-        let mut name_changes = dbus_proxy.receive_signal("NameOwnerChanged").await?;
-
-        self.items.clear();
-        self.fetch_all_items().await;
-        let _ = tx.send(self.items.values().cloned().collect()).await;
-
         loop {
-            tokio::select! {
-                Some(msg) = added.next() => {
-                    if let Ok((service,)) = msg.body().deserialize::<(String,)>() {
-                        match Self::fetch_item(&self.conn, &service).await {
-                            Ok(item) => {
-                                self.items.insert(service, item);
-                                let _ = tx.send(self.items.values().cloned().collect()).await;
-                            }
-                            Err(e) => eprintln!("Failed to fetch {service}: {e}"),
-                        }
-                    }
-                }
-                Some(msg) = removed.next() => {
-                    if let Ok((service,)) = msg.body().deserialize::<(String,)>() {
-                        self.items.remove(&service);
-                        let _ = tx.send(self.items.values().cloned().collect()).await;
-                    }
-                }
-                Some(msg) = name_changes.next() => {
-                    // NameOwnerChanged fires as (name, old_owner, new_owner)
-                    // An empty new_owner means the name has vanished
-                    if let Ok((name, _old, new_owner)) = msg.body().deserialize::<(String, String, String)>() {
-                        if new_owner.is_empty() {
-                            self.items.remove(&name);
-                            let _ = tx.send(self.items.values().cloned().collect()).await;
-                        }
-                    }
-                }
+            let old_items: HashMap<String, TrayItem> = self.items.drain().collect();
+            self.fetch_all_items().await;
+
+            let items = self.items.values().cloned().collect();
+            if old_items != self.items {
+                let _ = tx.send(items).await;
             }
+
+            glib::timeout_future(Duration::from_millis(300)).await;
         }
     }
 
