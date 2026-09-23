@@ -251,8 +251,10 @@ fn main() {
         // System Tray
 
         glib::MainContext::default().spawn_local(async move {
-            let _watcher = watcher::StatusNotifierWatcher::spawn().await.unwrap();
-
+            let w = watcher::StatusNotifierWatcher::spawn().await.unwrap();
+            let watching_names = async {
+                let _ = w.watch_names().await;
+            };
             let mut host = systray::host().await;
 
             // Send initial items
@@ -272,7 +274,7 @@ fn main() {
                 let _ = host.run(tray_tx).await;
             };
 
-            tokio::join!(driver, updater);
+            tokio::join!(driver, updater, watching_names);
         });
 
 
@@ -698,7 +700,7 @@ fn main() {
                 else if !output.stdout.is_empty() {
                     svg = nix::adjust_nix(svg.as_str(), "#fdb022");
                     let num_files =  String::from_utf8(output.stdout).unwrap().lines().count();
-                    p_changes = format!("\nPending Changes : {} file{}", num_files, if num_files > 1 {"s"} else {""});
+                    p_changes = format!("\nPending Changes: {} file{}", num_files, if num_files > 1 {"s"} else {""});
                 }
                 else {
                     svg = nix::adjust_nix(svg.as_str(), "#c0caf5");

@@ -30,7 +30,7 @@ pub fn update_tray(
         container.remove(&child);
     }
     let mut sorted = items.to_vec();
-    sorted.sort_by(|a, b| b.service.cmp(&a.service));
+    sorted.sort_by(|a, b| b.tooltip.cmp(&a.tooltip));
 
     for item in &sorted {
         let image = build_icon(item);

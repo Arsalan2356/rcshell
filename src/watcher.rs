@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use std::collections::HashSet;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, connection, fdo, interface};
@@ -75,7 +76,7 @@ impl WatcherState {
 }
 
 pub struct StatusNotifierWatcher {
-    _conn: Connection,
+    conn: Connection,
 }
 
 impl StatusNotifierWatcher {
@@ -91,6 +92,61 @@ impl StatusNotifierWatcher {
             .build()
             .await?;
 
-        Ok(Self { _conn: conn })
+        Ok(Self { conn: conn })
+    }
+
+    pub async fn watch_names(&self) -> Result<(), anyhow::Error> {
+        let conn = &self.conn;
+        let dbus = zbus::Proxy::new(
+            conn,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )
+        .await?;
+        let mut owner_changed = dbus.receive_signal("NameOwnerChanged").await?;
+        let object_server = conn.object_server();
+        while let Some(msg) = owner_changed.next().await {
+            let Ok((name, _old_owner, new_owner)) =
+                msg.body().deserialize::<(String, String, String)>()
+            else {
+                continue;
+            };
+
+            // Only care about unique names disappearing.
+            if !name.starts_with(':') || !new_owner.is_empty() {
+                continue;
+            }
+
+            let Ok(iface) = object_server
+                .interface::<_, WatcherState>("/StatusNotifierWatcher")
+                .await
+            else {
+                continue;
+            };
+
+            let mut watcher = iface.get_mut().await;
+
+            let removed: Vec<String> = watcher
+                .items
+                .iter()
+                .filter(|item| {
+                    item.split_once('/')
+                        .map(|(dest, _)| dest == name)
+                        .unwrap_or(*item == &name)
+                })
+                .cloned()
+                .collect();
+
+            for item in removed {
+                watcher.items.remove(&item);
+
+                let _ =
+                    WatcherState::status_notifier_item_unregistered(iface.signal_emitter(), &item)
+                        .await;
+            }
+        }
+
+        Ok(())
     }
 }
