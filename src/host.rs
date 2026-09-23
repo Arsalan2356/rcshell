@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::time::Duration;
-use zbus::zvariant::Structure;
 use zbus::{Connection, Proxy};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,16 +116,7 @@ impl StatusNotifierHost {
 
         let icon_name: String = proxy.get_property("IconName").await.unwrap_or_default();
 
-        let tooltip: String = proxy
-            .get_property::<Structure>("ToolTip")
-            .await
-            .ok()
-            .and_then(|s| {
-                s.fields()
-                    .get(2)
-                    .and_then(|v| String::try_from(v.clone()).ok())
-            })
-            .unwrap_or_default();
+        let tooltip: String = proxy.get_property("Title").await.unwrap_or_default();
 
         let icon_pixmaps: Vec<IconPixmap> = proxy
             .get_property::<Vec<(i32, i32, Vec<u8>)>>("IconPixmap")

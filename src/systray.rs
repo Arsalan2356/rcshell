@@ -2,6 +2,7 @@ use crate::host::*;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk};
 use std::collections::HashMap;
+use std::process::Command;
 use zbus::{Connection, Proxy};
 use zvariant::OwnedValue;
 
@@ -47,7 +48,22 @@ pub fn update_tray(
 fn build_icon(item: &TrayItem) -> gtk::Image {
     let l = {
         if !item.icon_name.is_empty() {
-            gtk::Image::from_icon_name(&item.icon_name)
+            let path = String::from_utf8(
+                Command::new("iconfinder")
+                    .arg(&item.icon_name)
+                    .output()
+                    .unwrap()
+                    .stdout,
+            )
+            .unwrap();
+
+            let i1 = if path == "" || path.contains(".svgz") {
+                vec!["/home/rc/default/window-icon.svg", "0"]
+            } else {
+                path.split("<separator>").collect()
+            };
+
+            gtk::Image::from_file(i1[0])
         } else if let Some(pixmap) = item.icon_pixmaps.iter().max_by_key(|p| p.width * p.height) {
             let mut rgba = pixmap.data.clone();
             for chunk in rgba.chunks_mut(4) {
@@ -76,6 +92,7 @@ fn build_icon(item: &TrayItem) -> gtk::Image {
     l.set_size_request(12, 12);
     l.set_valign(gtk::Align::Center);
     l.set_halign(gtk::Align::Center);
+    l.set_tooltip_text(Some(&item.tooltip));
     return l;
 }
 
@@ -122,6 +139,7 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
             };
 
             p.set_menu_model(Some(&model));
+            p.set_height_request(model.n_items() * 55);
 
             p.insert_action_group("menu", None::<&gio::ActionGroup>);
             p.insert_action_group("menu", Some(&action_group));
