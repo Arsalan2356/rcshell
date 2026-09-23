@@ -72,19 +72,33 @@ impl StatusNotifierHost {
         proxy.call("GetConnectionUnixProcessID", &(dest,)).await
     }
 
-    async fn add_item(&mut self, service: String) {
-        match Self::get_service_pid(&self.conn, &service).await {
-            Ok(_) => match Self::fetch_item(&self.conn, &service).await {
-                Ok(item) => {
-                    self.items.insert(service, item);
-                }
-                Err(e) => {
-                    eprintln!("Failed to fetch {service}: {e}");
-                }
-            },
+    async fn connection_exists(conn: &Connection, service: &str) -> zbus::Result<bool> {
+        let (dest, _) = service.split_once('/').unwrap_or((service, ""));
 
-            Err(e) => {
-                eprintln!("Ignoring stale service {service}: {e}");
+        let proxy = Proxy::new(
+            conn,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )
+        .await?;
+
+        proxy.call("NameHasOwner", &(dest,)).await
+    }
+
+    async fn add_item(&mut self, service: String) {
+        let exists = Self::connection_exists(&self.conn, &service).await;
+        if let Ok(true) = exists {
+            // Don't add it
+            match Self::get_service_pid(&self.conn, &service).await {
+                Ok(_) => match Self::fetch_item(&self.conn, &service).await {
+                    Ok(item) => {
+                        self.items.insert(service, item);
+                    }
+                    Err(_) => {}
+                },
+
+                Err(_) => {}
             }
         }
     }
@@ -155,12 +169,12 @@ impl StatusNotifierHost {
             let old_items: HashMap<String, TrayItem> = self.items.drain().collect();
             self.fetch_all_items().await;
 
-            let items = self.items.values().cloned().collect();
-            if old_items != self.items {
+            let items: Vec<TrayItem> = self.items.values().cloned().collect();
+            if items.len() != old_items.values().len() {
                 let _ = tx.send(items).await;
             }
 
-            glib::timeout_future(Duration::from_millis(300)).await;
+            glib::timeout_future(Duration::from_millis(750)).await;
         }
     }
 

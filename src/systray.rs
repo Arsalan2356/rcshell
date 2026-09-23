@@ -132,8 +132,7 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
 
             let (model, action_group) = match create_tray_menu(&conn, &i).await {
                 Ok(result) => result,
-                Err(err) => {
-                    eprintln!("Failed to create tray menu: {err}");
+                Err(_) => {
                     return;
                 }
             };
@@ -216,8 +215,7 @@ fn build_menu(item: &RawMenuItem, actions: &mut Vec<MenuAction>) -> gio::Menu {
     for child in children {
         let child: RawMenuItem = match child.clone().try_into() {
             Ok(child) => child,
-            Err(err) => {
-                eprintln!("Failed to parse DBusMenu child: {err}");
+            Err(_) => {
                 continue;
             }
         };
@@ -295,15 +293,12 @@ async fn create_tray_menu(
             glib::spawn_future_local(async move {
                 let conn = match Connection::session().await {
                     Ok(conn) => conn,
-                    Err(err) => {
-                        eprintln!("DBus connection failed: {err}");
+                    Err(_) => {
                         return;
                     }
                 };
 
-                if let Err(err) = send_menu_event(&conn, &service, &menu_path, id).await {
-                    eprintln!("DBusMenu Event failed: {err}");
-                }
+                if let Err(_) = send_menu_event(&conn, &service, &menu_path, id).await {}
             });
         });
 
