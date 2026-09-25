@@ -37,6 +37,10 @@ pub fn context_menu(label: &gtk::Label, name: String) {
         let profiles =
             String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
 
+        if profiles == "" {
+            return;
+        }
+
         let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         menu_box.add_css_class("menu");
 

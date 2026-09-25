@@ -382,7 +382,7 @@ fn main() {
 
 
                 let val = {
-                    if v == "" {
+                    if v.trim() == "" {
                         "󰂯".to_string()
                     } else {
                         let q = v.trim();
@@ -412,7 +412,9 @@ fn main() {
                 let active_profile =
                     String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
 
-                let label = if active_profile.contains("sbc_xq") {
+                let label = if active_profile.trim() == "" {
+                    "UN"
+                } else if active_profile.contains("sbc_xq") {
                     "XQ"
                 } else if active_profile.contains("headset") && !active_profile.contains("cvsd") {
                     "VC"

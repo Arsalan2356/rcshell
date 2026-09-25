@@ -10,7 +10,7 @@ pub fn bluetooth() -> gtk::Label {
     let v = String::from_utf8(Command::new("btbattery").output().unwrap().stdout).unwrap();
 
     let val = {
-        if v == "" {
+        if v.trim() == "" {
             "󰂯".to_string()
         } else {
             let q = v.trim();
