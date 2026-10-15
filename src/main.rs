@@ -17,6 +17,7 @@ use std::{process::Command, time::Duration};
 
 use crate::audio::setup_controllers;
 use audio::{get_player_img, inject_outline_style};
+use debug_print::debug_println;
 use gdk_pixbuf::PixbufLoader;
 use gio::prelude::*;
 use glib::{self, GString};
@@ -361,18 +362,22 @@ fn main() {
                 )
                 .unwrap();
 
+                debug_println!("wpctl get-volume @DEFAULT_AUDIO_SINK@ returned {}", v);
+
                 let val = {
-                    if v == "0" {
-                        "0".to_string()
-                    } else {
+                    if v.len() > 8 && v.contains("Volume") {
                         let ival = v.get(8..).unwrap().trim().parse::<f32>().unwrap();
                         format!(
                             "{} {}%",
                             if ival > 0.4 { " " } else { " " },
                             (ival * 100.0).round()
                         )
+                    } else {
+                        "0".to_string()
                     }
                 };
+
+                debug_println!("wpctl val is {}", val);
 
                 vol.set_text(&val);
 
@@ -380,6 +385,7 @@ fn main() {
                 // Bluetooth
                 let v = String::from_utf8(Command::new("btbattery").output().unwrap().stdout).unwrap();
 
+                debug_println!("btbattery returned {}", v);
 
                 let val = {
                     if v.trim() == "" {
@@ -399,6 +405,8 @@ fn main() {
                     }
                 };
 
+                debug_println!("btbattery val is {}", val);
+
                 bt.set_text(&val);
 
 
@@ -412,6 +420,8 @@ fn main() {
                 let active_profile =
                     String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
 
+                debug_println!("pactl active profile returned {}", active_profile);
+
                 let label = if active_profile.trim() == "" {
                     "UN"
                 } else if active_profile.contains("sbc_xq") {
@@ -421,6 +431,9 @@ fn main() {
                 } else {
                     "UN"
                 };
+
+                debug_println!("pactl label is {}", label);
+
                 pf.set_label(label);
                 if label == "VC" {
                     pf.add_css_class("vc");
@@ -429,7 +442,7 @@ fn main() {
                     pf.remove_css_class("vc");
                 }
 
-                glib::timeout_future(Duration::from_secs(1)).await;
+                glib::timeout_future(Duration::from_millis(150)).await;
             }
         });
 
@@ -564,10 +577,8 @@ fn main() {
                             }
                             else if i.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
                                 i.remove_css_class("active");
-                                animate_pixel_size(i, i.pixel_size(), 36);
                             }
                         }
-
 
                     }
 
@@ -663,7 +674,7 @@ fn main() {
                 }
             }
 
-            glib::timeout_future(Duration::from_millis(70)).await;
+            glib::timeout_future(Duration::from_millis(30)).await;
         });
 
         // Nix Flake
@@ -719,7 +730,7 @@ fn main() {
 
                 nix.set_tooltip_text(Some(&tooltip));
 
-                glib::timeout_future(Duration::from_secs(1)).await;
+                glib::timeout_future(Duration::from_millis(500)).await;
             }
         });
 

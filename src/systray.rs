@@ -113,9 +113,6 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
         });
     });
 
-    // TODO Rewrite the system here to keep a menu for clients and show that when we're right-clicking
-    // Or call Activate/SecondaryActivate
-
     let right = gtk::GestureClick::new();
     right.set_button(3);
     let i = item.clone();
@@ -138,7 +135,7 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
             };
 
             p.set_menu_model(Some(&model));
-            p.set_height_request(model.n_items() * 55);
+            p.set_height_request(model.n_items() * 65);
 
             p.insert_action_group("menu", None::<&gio::ActionGroup>);
             p.insert_action_group("menu", Some(&action_group));
@@ -266,7 +263,7 @@ async fn create_tray_menu(
     item: &TrayItem,
 ) -> anyhow::Result<(gio::Menu, gio::SimpleActionGroup)> {
     let menu_path = item
-        ._menu_path
+        .menu_path
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("No DBusMenu"))?;
 

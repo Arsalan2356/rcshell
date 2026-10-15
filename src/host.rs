@@ -2,20 +2,20 @@ use std::collections::HashMap;
 use std::time::Duration;
 use zbus::{Connection, Proxy};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IconPixmap {
     pub width: i32,
     pub height: i32,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrayItem {
     pub service: String,
     pub icon_name: String,
     pub icon_pixmaps: Vec<IconPixmap>,
     pub tooltip: String,
-    pub _menu_path: Option<String>,
+    pub menu_path: Option<String>,
 }
 
 pub struct StatusNotifierHost {
@@ -156,7 +156,7 @@ impl StatusNotifierHost {
             icon_name,
             icon_pixmaps,
             tooltip,
-            _menu_path: menu_path,
+            menu_path: menu_path,
         })
     }
 
@@ -166,11 +166,17 @@ impl StatusNotifierHost {
         tx: tokio::sync::mpsc::Sender<Vec<TrayItem>>,
     ) -> anyhow::Result<()> {
         loop {
-            let old_items: HashMap<String, TrayItem> = self.items.drain().collect();
+            let old_items: Vec<TrayItem> = self
+                .items
+                .drain()
+                .collect::<HashMap<String, TrayItem>>()
+                .values()
+                .cloned()
+                .collect();
             self.fetch_all_items().await;
 
             let items: Vec<TrayItem> = self.items.values().cloned().collect();
-            if items.len() != old_items.values().len() {
+            if items != old_items {
                 let _ = tx.send(items).await;
             }
 
