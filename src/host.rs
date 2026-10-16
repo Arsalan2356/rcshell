@@ -180,7 +180,7 @@ impl StatusNotifierHost {
                 let _ = tx.send(items).await;
             }
 
-            glib::timeout_future(Duration::from_millis(750)).await;
+            glib::timeout_future(Duration::from_millis(1100)).await;
         }
     }
 

@@ -1,4 +1,5 @@
 use crate::host::*;
+use debug_print::debug_println;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk};
 use std::collections::HashMap;
@@ -121,6 +122,9 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
         let Some(widget) = gesture.widget() else {
             return;
         };
+
+        debug_println!("RIGHT-CLICK SVC {:?}", gesture.widget());
+
         let i = i.clone();
         let p = p.clone();
 
