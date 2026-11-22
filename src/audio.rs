@@ -70,13 +70,18 @@ pub fn get_player_img(index: usize, clients: &[&str]) -> String {
     )
     .unwrap();
 
+    player_img_from(&icon)
+}
+
+/// Read the SVG that `iconfinder` output points to, or the default icon.
+pub fn player_img_from(icon: &str) -> String {
     let i1 = if icon == "" || icon.contains(".svgz") {
         vec!["/home/rc/default/window-icon.svg", "0"]
     } else {
         icon.split("<separator>").collect()
     };
 
-    return std::fs::read_to_string(i1[0]).unwrap();
+    std::fs::read_to_string(i1[0]).unwrap()
 }
 
 fn prev_widget() -> gtk::Image {

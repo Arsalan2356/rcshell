@@ -1,27 +1,26 @@
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
+use crate::subprocess;
+
 /// Set when the last call refreshed the icon database; it's refreshed every other call.
 static DB_REFRESHED_LAST: AtomicBool = AtomicBool::new(false);
 
-pub fn clients() -> Vec<gtk::Image> {
+pub async fn clients() -> Vec<gtk::Image> {
     let mut start_data: Vec<gtk::Image> = vec![];
 
-    let output =
-        String::from_utf8(Command::new("hyprclients").output().expect("failed").stdout).unwrap();
+    let output = subprocess::output(&["hyprclients"]).await;
 
-    let output2 =
-        String::from_utf8(Command::new("hypractive").output().expect("failed").stdout).unwrap();
+    let output2 = subprocess::output(&["hypractive"]).await;
 
     let o2: Vec<&str> = output2.split("<separator>").collect();
 
     let active_workspace = o2.get(0).unwrap().parse::<usize>().unwrap();
 
     if !DB_REFRESHED_LAST.fetch_xor(true, Ordering::Relaxed) {
-        let _ = Command::new("iconfinderdb").output();
+        subprocess::output(&["iconfinderdb"]).await;
     }
 
     let mut v: Vec<&str> = output.lines().collect();
@@ -63,14 +62,7 @@ pub fn clients() -> Vec<gtk::Image> {
             l.add_css_class("active");
         }
 
-        let icon = String::from_utf8(
-            Command::new("iconfinder")
-                .arg(init_title)
-                .output()
-                .unwrap()
-                .stdout,
-        )
-        .unwrap();
+        let icon = subprocess::output(&["iconfinder", *init_title]).await;
 
         let i1 = if icon == "" || icon.contains(".svgz") {
             vec!["/home/rc/default/window-icon.svg", "0"]
@@ -78,14 +70,7 @@ pub fn clients() -> Vec<gtk::Image> {
             icon.split("<separator>").collect()
         };
 
-        let icon2 = String::from_utf8(
-            Command::new("iconfinder")
-                .arg(window_class)
-                .output()
-                .unwrap()
-                .stdout,
-        )
-        .unwrap();
+        let icon2 = subprocess::output(&["iconfinder", *window_class]).await;
 
         let i2 = if icon2 == "" || icon2.contains(".svgz") {
             vec!["/home/rc/default/window-icon.svg", "0"]

@@ -1,9 +1,9 @@
 use crate::host::*;
+use crate::subprocess;
 use debug_print::debug_println;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk};
 use std::collections::HashMap;
-use std::process::Command;
 use zbus::{Connection, Proxy};
 use zvariant::OwnedValue;
 
@@ -22,20 +22,20 @@ pub async fn host() -> StatusNotifierHost {
     return StatusNotifierHost::new(conn).await.unwrap();
 }
 
-pub fn update_tray(
+pub async fn update_tray(
     container: &gtk::Box,
     container_popover: &gtk::PopoverMenu,
     items: &[&TrayItem],
     conn: &Connection,
 ) {
-    while let Some(child) = container.first_child() {
-        container.remove(&child);
-    }
     let mut sorted = items.to_vec();
     sorted.sort_by(|a, b| b.tooltip.cmp(&a.tooltip));
 
+    // Build every icon before touching the tray so it isn't left empty while
+    // the icon lookups run.
+    let mut images = Vec::with_capacity(sorted.len());
     for item in &sorted {
-        let image = build_icon(item);
+        let image = build_icon(item).await;
         image.set_pixel_size(20);
 
         if !item.tooltip.is_empty() {
@@ -43,21 +43,21 @@ pub fn update_tray(
         }
 
         attach_gestures(&image, item, container_popover, conn);
-        container.append(&image);
+        images.push(image);
+    }
+
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+    for image in &images {
+        container.append(image);
     }
 }
 
-fn build_icon(item: &TrayItem) -> gtk::Image {
+async fn build_icon(item: &TrayItem) -> gtk::Image {
     let l = {
         if !item.icon_name.is_empty() {
-            let path = String::from_utf8(
-                Command::new("iconfinder")
-                    .arg(&item.icon_name)
-                    .output()
-                    .unwrap()
-                    .stdout,
-            )
-            .unwrap();
+            let path = subprocess::output(&["iconfinder", &item.icon_name]).await;
 
             let i1 = if path == "" || path.contains(".svgz") {
                 vec!["/home/rc/default/window-icon.svg", "0"]

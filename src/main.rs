@@ -6,6 +6,7 @@ mod ipc;
 mod logout;
 mod nix;
 mod profile;
+mod subprocess;
 mod systray;
 mod time;
 mod title;
@@ -16,7 +17,7 @@ mod workspaces;
 use std::{process::Command, time::Duration};
 
 use crate::audio::setup_controllers;
-use audio::{get_player_img, inject_outline_style};
+use audio::inject_outline_style;
 use debug_print::debug_println;
 use gdk_pixbuf::PixbufLoader;
 use gio::prelude::*;
@@ -83,11 +84,17 @@ fn left(container: &mut gtk::Box) -> (gtk::Box, gtk::Label) {
     (wp, tbox)
 }
 
-fn center(container: &gtk::Box) -> Vec<gtk::Image> {
-    let imgs = clients::clients();
+async fn center(container: &gtk::Box) -> Vec<gtk::Image> {
+    let imgs = clients::clients().await;
     let innerbox = gtk::Box::new(gtk::Orientation::Horizontal, 5);
     for i in &imgs {
         innerbox.append(i);
+    }
+
+    // Replace the old box only once the new one is built, so the clients don't
+    // blank out while the icon lookups run.
+    if let Some(old) = container.first_child() {
+        container.remove(&old);
     }
     container.append(&innerbox);
 
@@ -161,7 +168,6 @@ fn activate(
     gtk::Box,
     gtk::Label,
     gtk::Box,
-    Vec<gtk::Image>,
     gtk::Revealer,
     gtk::Image,
     gtk::Image,
@@ -211,9 +217,9 @@ fn activate(
     start_widget.add_css_class("rbackground");
     let (wp, tbox) = left(&mut start_widget);
 
-    let mut center_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    // Filled in by the Hyprland event loop before it handles any events
+    let center_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     center_widget.add_css_class("cbackground");
-    let imgs = center(&mut center_widget);
 
     let mut end_widget = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     end_widget.add_css_class("rbackground");
@@ -237,7 +243,6 @@ fn activate(
         wp,
         tbox,
         center_widget,
-        imgs,
         ad,
         prev,
         play,
@@ -260,7 +265,7 @@ fn main() {
     application.connect_startup(|_| load_css());
 
     application.connect_activate(|app| {
-        let (wp, tbox, center_widget, mut imgs, ad, prev, play, next, vol, bt, nix, pf, time, tray_box, tray_box_popover) = activate(app);
+        let (wp, tbox, center_widget, ad, prev, play, next, vol, bt, nix, pf, time, tray_box, tray_box_popover) = activate(app);
         setup_controllers!(ad, prev, play, next);
 
 
@@ -288,7 +293,7 @@ fn main() {
             let updater = async move {
                 while let Some(items) = tray_rx.recv().await {
                     let refs: Vec<&host::TrayItem> = items.iter().collect();
-                    systray::update_tray(&tray_box, &tray_box_popover, &refs, &conn);
+                    systray::update_tray(&tray_box, &tray_box_popover, &refs, &conn).await;
                 }
             };
 
@@ -313,17 +318,10 @@ fn main() {
 
 
         // Bluetooth battery: slow to query and changes slowly, so it runs in its
-        // own loop with the command on a worker thread.
+        // own loop.
         glib::MainContext::default().spawn_local(async move {
             loop {
-                let v = gio::spawn_blocking(|| {
-                    Command::new("btbattery")
-                        .output()
-                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-                        .unwrap_or_default()
-                })
-                .await
-                .unwrap_or_default();
+                let v = subprocess::output(&["btbattery"]).await;
 
                 debug_println!("btbattery returned {}", v);
 
@@ -345,8 +343,7 @@ fn main() {
 
             loop {
                 // Audio Player
-                let output =
-                    String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout).unwrap();
+                let output = subprocess::output(&["playerctl", "-l"]).await;
 
                 let clients = audio::player_list(&output);
 
@@ -365,17 +362,9 @@ fn main() {
 
                     let inbox = ad.child().unwrap().downcast::<gtk::Box>().unwrap();
 
-                    let is_playing = {
-                        let s = String::from_utf8(
-                            Command::new("playerctl")
-                                .args(["status", "-p", clients[ci]])
-                                .output()
-                                .unwrap()
-                                .stdout,
-                        )
-                        .unwrap();
-                        if s.contains("Playing") { true } else { false }
-                    };
+                    let is_playing = subprocess::output(&["playerctl", "status", "-p", clients[ci]])
+                        .await
+                        .contains("Playing");
 
                     let inner_revealer = inbox.first_child().unwrap().downcast::<gtk::Revealer>().unwrap();
                     let cbox = inner_revealer.child().unwrap().downcast::<gtk::CenterBox>().unwrap();
@@ -392,7 +381,9 @@ fn main() {
 
                     if player_changed {
                         let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
-                        let base_img = get_player_img(ci, &clients);
+                        let base_img = audio::player_img_from(
+                            &subprocess::output(&["iconfinder", clients[ci]]).await,
+                        );
                         let svg = inject_outline_style(&base_img, "#c0caf5");
                         let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
                         loader.write(svg.as_bytes()).expect("Failed to load svg");
@@ -405,14 +396,7 @@ fn main() {
 
 
                 // Volume
-                let v = String::from_utf8(
-                    Command::new("wpctl")
-                        .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
-                        .output()
-                        .unwrap()
-                        .stdout,
-                )
-                .unwrap();
+                let v = subprocess::output(&["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]).await;
 
                 debug_println!("wpctl get-volume @DEFAULT_AUDIO_SINK@ returned {}", v);
 
@@ -424,13 +408,10 @@ fn main() {
 
 
                 // Audio Profile
-                let args = [
-                    "-c",
+                let active_profile = subprocess::sh(
                     "pactl -f json list cards | jq -r '.[] | select(.name | contains(\"bluez\")) | .active_profile'",
-                ];
-
-                let active_profile =
-                    String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
+                )
+                .await;
 
                 debug_println!("pactl active profile returned {}", active_profile);
 
@@ -460,10 +441,10 @@ fn main() {
 
         macro_rules! workspace_focus {
             ($active : ident) => {
-                let output = String::from_utf8(Command::new("sh")
-                        .args(["-c", "hyprctl activeworkspace -j | jq -r '(.id | tostring) + \",\" + (.windows | tostring)'"])
-                        .output()
-                        .expect("failed").stdout).unwrap();
+                let output = subprocess::sh(
+                    "hyprctl activeworkspace -j | jq -r '(.id | tostring) + \",\" + (.windows | tostring)'",
+                )
+                .await;
 
                 let (id, windows) = output.trim().split_once(',').unwrap_or(("0", "0"));
                 let $active = id.parse::<i64>().unwrap_or(0).unsigned_abs() as usize;
@@ -510,19 +491,13 @@ fn main() {
 
         let last_state = std::cell::RefCell::new([0usize; 8]);
         // Hyprland events
-        // <20 ms on average
         glib::MainContext::default().spawn_local(async move {
+            let mut imgs = center(&center_widget).await;
 
-            let client_counts = || {
+            let client_counts = async || {
                 let mut data: [usize; 8] = [0; 8];
 
-                let output = String::from_utf8(
-                    Command::new("hyprworkspaces")
-                        .output()
-                        .expect("failed")
-                        .stdout,
-                )
-                .unwrap();
+                let output = subprocess::output(&["hyprworkspaces"]).await;
 
                 for line in output.lines() {
                     if let Some((num, windows)) = workspaces::parse_workspace_line(line) {
@@ -564,11 +539,11 @@ fn main() {
             };
 
 
-            let update_title = || {
-                let title = String::from_utf8(Command::new("sh")
-                        .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindowtitle | tostring)'"])
-                        .output()
-                        .expect("failed").stdout).unwrap();
+            let update_title = async || {
+                let title = subprocess::sh(
+                    "hyprctl activeworkspace -j | jq -r '(.lastwindowtitle | tostring)'",
+                )
+                .await;
 
                 tbox.set_text(&title::client_title_wrap(title.clone()));
                 tbox.set_tooltip_text(Some(&title.as_str()));
@@ -586,16 +561,16 @@ fn main() {
                             }
                         }
 
-                        update_title();
+                        update_title().await;
                     }
 
                     HyprEvent::ActiveWindow => {
-                        update_title();
+                        update_title().await;
 
-                        let pt = String::from_utf8(Command::new("sh")
-                                .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindow | tostring)'"])
-                                .output()
-                                .expect("failed").stdout).unwrap();
+                        let pt = subprocess::sh(
+                            "hyprctl activeworkspace -j | jq -r '(.lastwindow | tostring)'",
+                        )
+                        .await;
 
 
                         for i in &imgs {
@@ -614,8 +589,7 @@ fn main() {
                     HyprEvent::WorkspaceMod => {
                         workspace_focus!(active_workspace);
 
-                        let output =
-                            String::from_utf8(Command::new("hyprclients").output().expect("failed").stdout).unwrap();
+                        let output = subprocess::output(&["hyprclients"]).await;
 
                         let mut curr_windows = vec![];
                         let mut active_window = "".to_string();
@@ -681,25 +655,19 @@ fn main() {
 
                     }
                     HyprEvent::WindowAddedToActive => {
-                        client_counts();
-
-                        // Get rid of the first inner box
-                        center_widget.remove(&center_widget.first_child().unwrap());
+                        client_counts().await;
 
                         // Re-construct the inner box using the image function
-                        imgs = center(&center_widget);
+                        imgs = center(&center_widget).await;
 
                         workspace_focus!(active_workspace);
 
                     }
                     HyprEvent::WindowRemovedFromActive => {
-                        client_counts();
-
-                        // Get rid of the first inner box
-                        center_widget.remove(&center_widget.first_child().unwrap());
+                        client_counts().await;
 
                         // Re-construct the inner box using the image function
-                        imgs = center(&center_widget);
+                        imgs = center(&center_widget).await;
 
                         workspace_focus!(active_workspace);
                     }
@@ -715,23 +683,16 @@ fn main() {
 
 
                 // Check the flake for uncommitted changes
-                let output = Command::new("git")
-                    .args(["-C", "/home/rc/flake", "status", "--porcelain"])
-                    .output()
-                    .unwrap();
+                let output = subprocess::output(&["git", "-C", "/home/rc/flake", "status", "--porcelain"]).await;
 
 
                 let mut p_changes = "".to_string();
 
                 // Check how many days it has been since the last nix update
-                let last_update = String::from_utf8(
-                    Command::new("git")
-                        .current_dir("/home/rc/flake")
-                        .args(["log", "-1", "--format=%ct", "flake.lock"])
-                        .output()
-                        .unwrap().stdout
-                )
-                .unwrap();
+                let last_update = subprocess::output(&[
+                    "git", "-C", "/home/rc/flake", "log", "-1", "--format=%ct", "flake.lock",
+                ])
+                .await;
 
                 let parsed_update = last_update.trim().parse::<i64>();
                 let update_ok = parsed_update.is_ok();
@@ -740,9 +701,9 @@ fn main() {
                 if update_ok && t_elapsed > THREE_DAYS {
                     svg = nix::adjust_nix(svg.as_str(), "#dc2626");
                 }
-                else if !output.stdout.is_empty() {
+                else if !output.is_empty() {
                     svg = nix::adjust_nix(svg.as_str(), "#fdb022");
-                    let num_files =  String::from_utf8(output.stdout).unwrap().lines().count();
+                    let num_files = output.lines().count();
                     p_changes = format!("\nPending Changes: {} file{}", num_files, if num_files > 1 {"s"} else {""});
                 }
                 else {
