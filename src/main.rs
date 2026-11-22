@@ -317,7 +317,7 @@ fn main() {
 
 
 
-        // Bluetooth battery: slow to query and changes slowly, so it runs in its
+        // Bluetooth battery: slow to query, so it runs in its
         // own loop.
         glib::MainContext::default().spawn_local(async move {
             loop {
@@ -331,7 +331,7 @@ fn main() {
 
                 bt.set_text(&val);
 
-                glib::timeout_future(Duration::from_secs(10)).await;
+                glib::timeout_future(Duration::from_secs(2)).await;
             }
         });
 
@@ -721,7 +721,7 @@ fn main() {
 
                 nix.set_tooltip_text(Some(&tooltip));
 
-                glib::timeout_future(Duration::from_millis(500)).await;
+                glib::timeout_future(Duration::from_millis(375)).await;
             }
         });
 
