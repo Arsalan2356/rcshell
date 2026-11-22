@@ -7,7 +7,7 @@ pub enum HyprEvent {
     WorkspaceMod,            // workspace changed/creation => only update active
     WindowRemovedFromActive, // window closed/moved => update active + client counts
     WindowAddedToActive,     // window opened => update active + client counts
-    ActiveWindow,            // workspace not changed, but focus changed => update title
+    ActiveWindow,            // focus or window title changed => update title
 }
 
 pub fn dispatch_workspace(i: usize) {
@@ -60,7 +60,7 @@ pub fn spawn_event_listener(sender: Sender<HyprEvent>) {
                 HyprEvent::WindowRemovedFromActive
             } else if line.starts_with("openwindow") {
                 HyprEvent::WindowAddedToActive
-            } else if line.starts_with("activewindowv2") {
+            } else if line.starts_with("activewindowv2") || line.starts_with("windowtitlev2") {
                 HyprEvent::ActiveWindow
             } else {
                 continue;

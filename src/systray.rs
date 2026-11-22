@@ -65,14 +65,25 @@ fn build_icon(item: &TrayItem) -> gtk::Image {
             };
 
             gtk::Image::from_file(i1[0])
-        } else if let Some(pixmap) = item.icon_pixmaps.iter().max_by_key(|p| p.width * p.height) {
-            let mut rgba = pixmap.data.clone();
-            for chunk in rgba.chunks_mut(4) {
-                let (a, r, g, b) = (chunk[0], chunk[1], chunk[2], chunk[3]);
-                chunk[0] = r;
-                chunk[1] = g;
-                chunk[2] = b;
-                chunk[3] = a;
+        } else if let Some(pixmap) = item
+            .icon_pixmaps
+            .iter()
+            .filter(|p| p.width > 0 && p.height > 0)
+            .max_by_key(|p| p.width as i64 * p.height as i64)
+        {
+            // ARGB32 (network byte order) -> RGBA. Pixels missing from the data
+            // (or missing their alpha byte) are made fully opaque.
+            let pixels = pixmap.width as usize * pixmap.height as usize;
+            let mut rgba = Vec::with_capacity(pixels * 4);
+            for px in 0..pixels {
+                let src = pixmap.data.get(px * 4..).unwrap_or(&[]);
+                let byte = |i: usize| src.get(i).copied();
+                rgba.extend_from_slice(&[
+                    byte(1).unwrap_or(0),
+                    byte(2).unwrap_or(0),
+                    byte(3).unwrap_or(0),
+                    byte(0).unwrap_or(0xFF),
+                ]);
             }
             let bytes = glib::Bytes::from(&rgba);
             let texture = gdk::MemoryTexture::new(

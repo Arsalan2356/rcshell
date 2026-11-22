@@ -43,7 +43,7 @@ pub fn clients() -> Vec<gtk::Image> {
 
         l.add_css_class("baseclient");
         l.set_size_request(16, 16);
-        if id.parse::<usize>().unwrap() == active_workspace {
+        if id.parse::<i64>().unwrap().unsigned_abs() as usize == active_workspace {
             if first {
                 fimage = Some(i);
                 first = false;

@@ -13,7 +13,7 @@ static PROFILE_MAP: phf::Map<&'static str, &'static str> = phf_map! {
         "headset-head-unit-cvsd" => "SD",
 };
 
-pub fn context_menu(label: &gtk::Label, name: String) {
+pub fn context_menu(label: &gtk::Label) {
     // Add event controller
     let click = gtk::GestureClick::new();
 
@@ -23,10 +23,18 @@ pub fn context_menu(label: &gtk::Label, name: String) {
     click.set_button(3);
     click.connect_pressed(move |_, _, x, y| {
 
-        while let Some(_) = popover.child() {
+        if popover.child().is_some() {
             popover.set_child(gtk::Widget::NONE);
-            break;
         }
+
+        // Look the card up on each click so a device connected after startup works.
+        let args = [
+            "-c",
+            "pactl -f json list cards | jq -r '.[] | select(.name | contains(\"bluez\")) | .name'",
+        ];
+
+        let name = String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
+        let name = name.trim().to_string();
 
         let args = [
             "-c",
@@ -85,13 +93,6 @@ pub fn context_menu(label: &gtk::Label, name: String) {
 pub fn profile() -> gtk::Label {
     let args = [
         "-c",
-        "pactl -f json list cards | jq -r '.[] | select(.name | contains(\"bluez\")) | .name'",
-    ];
-
-    let name = String::from_utf8(Command::new("sh").args(args).output().unwrap().stdout).unwrap();
-
-    let args = [
-        "-c",
         "pactl -f json list cards | jq -r '.[] | select(.name | contains(\"bluez\")) | .active_profile'",
     ];
 
@@ -114,9 +115,7 @@ pub fn profile() -> gtk::Label {
         container.add_css_class("vc");
     }
 
-    context_menu(&container, name.trim().to_string());
+    context_menu(&container);
 
-    container.set_widget_name(name.trim());
-
-    return container;
+    container
 }

@@ -30,8 +30,36 @@ pub fn svg_to_img(svg: String) -> gtk::Image {
     return gtk::Image::from_pixbuf(Some(&px));
 }
 
-pub fn get_player_img(index: usize, clients: &Vec<&str>) -> String {
-    let currplayer = clients.get(index).unwrap();
+/// Player names from `playerctl -l` output, without the trailing empty line.
+pub fn player_list(output: &str) -> Vec<&str> {
+    output.lines().filter(|l| !l.trim().is_empty()).collect()
+}
+
+/// Clamp the player index stored in the container's widget name to the current
+/// player list. Returns `None` when there are no players.
+pub fn current_player(container: &gtk::Revealer, clients: &[&str]) -> Option<usize> {
+    if clients.is_empty() {
+        return None;
+    }
+
+    let curr_index = container.widget_name().parse::<i32>().unwrap_or(0);
+    let last = clients.len() - 1;
+
+    if curr_index < 0 {
+        container.set_widget_name("0");
+        Some(0)
+    } else if curr_index as usize > last {
+        container.set_widget_name(last.to_string().as_str());
+        Some(last)
+    } else {
+        Some(curr_index as usize)
+    }
+}
+
+pub fn get_player_img(index: usize, clients: &[&str]) -> String {
+    let Some(currplayer) = clients.get(index) else {
+        return std::fs::read_to_string("/home/rc/default/window-icon.svg").unwrap();
+    };
 
     let icon = String::from_utf8(
         Command::new("iconfinder")
@@ -63,31 +91,18 @@ fn next_widget() -> gtk::Image {
     next_widget
 }
 
-fn play_widget(container: &gtk::Revealer, clients: &Vec<&str>) -> gtk::Image {
-    let curr_index = container.widget_name().parse::<i32>().unwrap();
-
-    let ci = {
-        if curr_index < 0 {
-            container.set_widget_name("0");
-            0
-        } else if curr_index > (clients.len() - 1) as i32 {
-            container.set_widget_name((clients.len() - 1).to_string().as_str());
-            clients.len() - 1
-        } else {
-            curr_index as usize
-        }
-    };
-
-    let is_playing = {
-        let s = String::from_utf8(
+fn play_widget(container: &gtk::Revealer, clients: &[&str]) -> gtk::Image {
+    let is_playing = match current_player(container, clients) {
+        Some(ci) => String::from_utf8(
             Command::new("playerctl")
-                .args(["status", "-p", clients.get(ci).unwrap()])
+                .args(["status", "-p", clients[ci]])
                 .output()
                 .unwrap()
                 .stdout,
         )
-        .unwrap();
-        if s.contains("Playing") { true } else { false }
+        .unwrap()
+        .contains("Playing"),
+        None => false,
     };
 
     let play_widget = gtk::Image::from_file(format!(
@@ -109,25 +124,15 @@ macro_rules! setup_controllers {
                 String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout)
                     .unwrap();
 
-            let clients: Vec<&str> = output.split("\n").collect();
+            let clients = crate::audio::player_list(&output);
 
-            let curr_index = cl.widget_name().parse::<i32>().unwrap();
-
-            let ci = {
-                if curr_index < 0 {
-                    cl.set_widget_name("0");
-                    0
-                } else if curr_index > (clients.len() - 1) as i32 {
-                    cl.set_widget_name((clients.len() - 1).to_string().as_str());
-                    clients.len() - 1
-                } else {
-                    curr_index as usize
-                }
+            let Some(ci) = crate::audio::current_player(&cl, &clients) else {
+                return;
             };
 
-            let _ = Command::new("playerctl")
-                .args(["previous", "-p", clients.get(ci).unwrap()])
-                .spawn();
+            let mut cmd = Command::new("playerctl");
+            cmd.args(["previous", "-p", clients[ci]]);
+            crate::spawn_reaped(cmd);
         });
 
         $prev_widget.add_controller(click_controller);
@@ -140,25 +145,15 @@ macro_rules! setup_controllers {
                 String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout)
                     .unwrap();
 
-            let clients: Vec<&str> = output.split("\n").collect();
+            let clients = crate::audio::player_list(&output);
 
-            let curr_index = cl.widget_name().parse::<i32>().unwrap();
-
-            let ci = {
-                if curr_index < 0 {
-                    cl.set_widget_name("0");
-                    0
-                } else if curr_index > (clients.len() - 1) as i32 {
-                    cl.set_widget_name((clients.len() - 1).to_string().as_str());
-                    clients.len() - 1
-                } else {
-                    curr_index as usize
-                }
+            let Some(ci) = crate::audio::current_player(&cl, &clients) else {
+                return;
             };
 
-            let _ = Command::new("playerctl")
-                .args(["play-pause", "-p", clients.get(ci).unwrap()])
-                .spawn();
+            let mut cmd = Command::new("playerctl");
+            cmd.args(["play-pause", "-p", clients[ci]]);
+            crate::spawn_reaped(cmd);
         });
 
         $play_widget.add_controller(click_controller);
@@ -171,25 +166,15 @@ macro_rules! setup_controllers {
                 String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout)
                     .unwrap();
 
-            let clients: Vec<&str> = output.split("\n").collect();
+            let clients = crate::audio::player_list(&output);
 
-            let curr_index = cl.widget_name().parse::<i32>().unwrap();
-
-            let ci = {
-                if curr_index < 0 {
-                    cl.set_widget_name("0");
-                    0
-                } else if curr_index > (clients.len() - 1) as i32 {
-                    cl.set_widget_name((clients.len() - 1).to_string().as_str());
-                    clients.len() - 1
-                } else {
-                    curr_index as usize
-                }
+            let Some(ci) = crate::audio::current_player(&cl, &clients) else {
+                return;
             };
 
-            let _ = Command::new("playerctl")
-                .args(["next", "-p", clients.get(ci).unwrap()])
-                .spawn();
+            let mut cmd = Command::new("playerctl");
+            cmd.args(["next", "-p", clients[ci]]);
+            crate::spawn_reaped(cmd);
         });
 
         $next_widget.add_controller(click_controller);
@@ -207,7 +192,7 @@ pub fn audio() -> (gtk::Revealer, gtk::Image, gtk::Image, gtk::Image) {
     let output =
         String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout).unwrap();
 
-    let clients: Vec<&str> = output.split("\n").collect();
+    let clients = player_list(&output);
 
     let inner_revealer = gtk::Revealer::new();
 
@@ -265,7 +250,7 @@ pub fn audio() -> (gtk::Revealer, gtk::Image, gtk::Image, gtk::Image) {
     container.set_child(Some(&inbox));
     container.set_transition_type(gtk::RevealerTransitionType::SlideLeft);
 
-    if clients.len() > 0 {
+    if !clients.is_empty() {
         container.set_reveal_child(true);
     }
 

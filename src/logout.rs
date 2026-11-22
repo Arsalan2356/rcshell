@@ -3,6 +3,8 @@ use std::process::Command;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
+use crate::spawn_reaped;
+
 pub fn logout() -> gtk::Box {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     container.add_css_class("custom_b");
@@ -18,7 +20,7 @@ pub fn logout() -> gtk::Box {
     let click = gtk::GestureClick::new();
 
     click.connect_released(|_, _, _, _| {
-        let _ = Command::new("wlogout").spawn().is_ok();
+        spawn_reaped(Command::new("wlogout"));
     });
 
     container.add_controller(click);

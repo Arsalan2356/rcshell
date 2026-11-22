@@ -30,23 +30,46 @@ use tokio::sync::mpsc;
 
 const THREE_DAYS: i64 = 60 * 60 * 24 * 3;
 
+/// Spawn a command without blocking, reaping it on a background thread so it
+/// doesn't linger as a zombie after it exits.
+pub(crate) fn spawn_reaped(mut cmd: Command) {
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
+}
+
+/// Icons on the active workspace carry this class and are shown large.
+const GROWN_CLASS: &str = "clientchild";
+
 fn animate_pixel_size(image: &gtk::Image, from: i32, to: i32) {
     if from == to {
         return;
     }
     let steps = 64;
-    let mut current = from;
-    let step = if to > from { 1 } else { -1 };
     let per_step = ((to - from).abs() + steps - 1) / steps;
     let i_c = image.clone();
 
     glib::timeout_add_local(Duration::from_millis(4), move || {
-        current += step * per_step;
-        if (step > 0 && current >= to) || (step < 0 && current <= to) {
-            i_c.set_pixel_size(to);
+        let current = i_c.pixel_size();
+        if current == to {
             return glib::ControlFlow::Break;
         }
-        i_c.set_pixel_size(current);
+
+        // Only grow icons that should be large and only shrink ones that
+        // shouldn't, so a stale animation stops once a newer one takes over.
+        let growing = current < to;
+        if growing != i_c.has_css_class(GROWN_CLASS) {
+            return glib::ControlFlow::Break;
+        }
+
+        let next = if growing {
+            (current + per_step).min(to)
+        } else {
+            (current - per_step).max(to)
+        };
+        i_c.set_pixel_size(next);
         glib::ControlFlow::Continue
     });
 }
@@ -159,8 +182,6 @@ fn activate(
     // Display above normal windows
     window.set_layer(Layer::Top);
 
-    window.auto_exclusive_zone_enable();
-
     window.set_size_request(100, 36);
 
     // Push other windows out of the way
@@ -210,7 +231,7 @@ fn activate(
     window.add_css_class("bar");
     window.set_vexpand(true);
 
-    window.show();
+    window.present();
 
     (
         wp,
@@ -298,58 +319,45 @@ fn main() {
                 let output =
                     String::from_utf8(Command::new("playerctl").arg("-l").output().unwrap().stdout).unwrap();
 
-                let clients: Vec<&str> = output.split("\n").collect();
+                let clients = audio::player_list(&output);
 
-                if clients.len() == 0 {
-                    ad.set_reveal_child(false);
+                ad.set_reveal_child(!clients.is_empty());
+
+                if let Some(ci) = audio::current_player(&ad, &clients) {
+                    let inbox = ad.child().unwrap().downcast::<gtk::Box>().unwrap();
+
+                    let is_playing = {
+                        let s = String::from_utf8(
+                            Command::new("playerctl")
+                                .args(["status", "-p", clients[ci]])
+                                .output()
+                                .unwrap()
+                                .stdout,
+                        )
+                        .unwrap();
+                        if s.contains("Playing") { true } else { false }
+                    };
+
+                    let inner_revealer = inbox.first_child().unwrap().downcast::<gtk::Revealer>().unwrap();
+                    let cbox = inner_revealer.child().unwrap().downcast::<gtk::CenterBox>().unwrap();
+                    let play_widget = cbox.center_widget().unwrap().downcast::<gtk::Image>().unwrap();
+
+                    play_widget.set_from_file(Some(format!(
+                            "/home/rc/default/assets/{}.svg",
+                            if is_playing { "pause" } else { "play" }
+                        )));
+                    play_widget.set_pixel_size(22);
+
+                    let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
+                    let base_img = get_player_img(ci, &clients);
+                    let svg = inject_outline_style(&base_img, "#c0caf5");
+                    let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
+                    loader.write(svg.as_bytes()).expect("Failed to load svg");
+                    loader.close().expect("Failed to close loader");
+
+                    let px = loader.pixbuf().expect("Failed to create pixbuf");
+                    img.set_from_pixbuf(Some(&px));
                 }
-
-                let curr_index = ad.widget_name().parse::<i32>().unwrap();
-                let ci = {
-                    if curr_index < 0 {
-                        ad.set_widget_name("0");
-                        0
-                    } else if curr_index > (clients.len() - 1) as i32 {
-                        ad.set_widget_name((clients.len() - 1).to_string().as_str());
-                        clients.len() - 1
-                    }
-                    else {
-                        curr_index as usize
-                    }
-                };
-                let inbox = ad.child().unwrap().downcast::<gtk::Box>().unwrap();
-
-                let is_playing = {
-                    let s = String::from_utf8(
-                        Command::new("playerctl")
-                            .args(["status", "-p", clients.get(ci).unwrap()])
-                            .output()
-                            .unwrap()
-                            .stdout,
-                    )
-                    .unwrap();
-                    if s.contains("Playing") { true } else { false }
-                };
-
-                let inner_revealer = inbox.first_child().unwrap().downcast::<gtk::Revealer>().unwrap();
-                let cbox = inner_revealer.child().unwrap().downcast::<gtk::CenterBox>().unwrap();
-                let play_widget = cbox.center_widget().unwrap().downcast::<gtk::Image>().unwrap();
-
-                play_widget.set_from_file(Some(format!(
-                        "/home/rc/default/assets/{}.svg",
-                        if is_playing { "pause" } else { "play" }
-                    )));
-                play_widget.set_pixel_size(22);
-
-                let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
-                let base_img = get_player_img(ci, &clients);
-                let svg = inject_outline_style(&base_img, "#c0caf5");
-                let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
-                loader.write(svg.as_bytes()).expect("Failed to load svg");
-                loader.close().expect("Failed to close loader");
-
-                let px = loader.pixbuf().expect("Failed to create pixbuf");
-                img.set_from_pixbuf(Some(&px));
 
 
                 // Volume
@@ -364,18 +372,7 @@ fn main() {
 
                 debug_println!("wpctl get-volume @DEFAULT_AUDIO_SINK@ returned {}", v);
 
-                let val = {
-                    if v.len() > 8 && v.contains("Volume") {
-                        let ival = v.get(8..).unwrap().trim().parse::<f32>().unwrap();
-                        format!(
-                            "{} {}%",
-                            if ival > 0.4 { " " } else { " " },
-                            (ival * 100.0).round()
-                        )
-                    } else {
-                        "0".to_string()
-                    }
-                };
+                let val = volume::volume_label(&v);
 
                 debug_println!("wpctl val is {}", val);
 
@@ -387,23 +384,7 @@ fn main() {
 
                 debug_println!("btbattery returned {}", v);
 
-                let val = {
-                    if v.trim() == "" {
-                        "󰂯".to_string()
-                    } else {
-                        let q = v.trim();
-                        let index = f32::max(
-                            f32::min((100.0 - q.parse::<f32>().unwrap()) / 10.0, 9.0),
-                            0.0,
-                        );
-
-                        format!(
-                            "{} {}%",
-                            bluetooth::ICONS[index as usize],
-                            q.parse::<f32>().unwrap().round()
-                        )
-                    }
-                };
+                let val = bluetooth::battery_label(&v);
 
                 debug_println!("btbattery val is {}", val);
 
@@ -453,8 +434,9 @@ fn main() {
                         .output()
                         .expect("failed").stdout).unwrap();
 
-                let $active = output.get(0..1).unwrap().parse::<usize>().unwrap();
-                let num_windows = output.get(2..3).unwrap().parse::<usize>().unwrap();
+                let (id, windows) = output.trim().split_once(',').unwrap_or(("0", "0"));
+                let $active = id.parse::<i64>().unwrap_or(0).unsigned_abs() as usize;
+                let num_windows = windows.parse::<usize>().unwrap_or(0);
 
                 let mut curr_child = wp.first_child().unwrap();
                 let mut upd = 0;
@@ -512,10 +494,9 @@ fn main() {
                 .unwrap();
 
                 for line in output.lines() {
-                    let split_data: Vec<&str> = line.split(",").collect();
-                    let num: usize = split_data.get(0).unwrap().parse::<usize>().unwrap();
-                    let windows: usize = split_data.get(1).unwrap().parse::<usize>().unwrap();
-                    data[num - 1] = windows;
+                    if let Some((num, windows)) = workspaces::parse_workspace_line(line) {
+                        data[num - 1] = windows;
+                    }
                 }
 
                 let mut p = last_state.borrow_mut();
@@ -594,7 +575,7 @@ fn main() {
                             let split_data: Vec<&str> = line.split("<separator>").collect();
                             let id = split_data.get(2).unwrap();
                             let focus = split_data.get(3).unwrap();
-                            if id.parse::<usize>().unwrap() == active_workspace {
+                            if id.parse::<i64>().unwrap().unsigned_abs() as usize == active_workspace {
                                 curr_windows.push(split_data.get(0).unwrap().to_string());
                             }
                             if focus.parse::<i32>().unwrap() == 0 {
@@ -634,6 +615,9 @@ fn main() {
 
                             if active_window == pt {
                                 i.add_css_class("active");
+                            }
+                            else if i.has_css_class("active") {
+                                i.remove_css_class("active");
                             }
                             counter += 1;
                         }

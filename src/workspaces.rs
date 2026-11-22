@@ -5,6 +5,20 @@ use gtk4::{EventControllerScrollFlags, prelude::*};
 
 use crate::ipc::{dispatch_down, dispatch_up, dispatch_workspace};
 
+/// Parse an "id,windows" line. Special workspaces (negative ids) use their
+/// absolute value; ids outside 1..=8 are ignored.
+pub fn parse_workspace_line(line: &str) -> Option<(usize, usize)> {
+    let (id, windows) = line.split_once(',')?;
+    let num = id.trim().parse::<i64>().ok()?.unsigned_abs() as usize;
+    let windows = windows.trim().parse::<usize>().ok()?;
+
+    if (1..=8).contains(&num) {
+        Some((num, windows))
+    } else {
+        None
+    }
+}
+
 pub fn workspaces() -> gtk::Box {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     container.add_css_class("workspaces");
@@ -20,10 +34,9 @@ pub fn workspaces() -> gtk::Box {
     .unwrap();
 
     for line in output.lines() {
-        let split_data: Vec<&str> = line.split(",").collect();
-        let num: usize = split_data.get(0).unwrap().parse::<usize>().unwrap();
-        let windows: usize = split_data.get(1).unwrap().parse::<usize>().unwrap();
-        start_data[num - 1] = windows;
+        if let Some((num, windows)) = parse_workspace_line(line) {
+            start_data[num - 1] = windows;
+        }
     }
 
     let output = String::from_utf8(Command::new("bash")
@@ -31,7 +44,9 @@ pub fn workspaces() -> gtk::Box {
             .output()
             .expect("failed").stdout).unwrap();
 
-    let active_workspace = output.get(0..1).unwrap().parse::<usize>().unwrap();
+    let active_workspace = parse_workspace_line(output.trim())
+        .map(|(num, _)| num)
+        .unwrap_or(0);
 
     for i in 1..=8 {
         let windows = start_data[i - 1];

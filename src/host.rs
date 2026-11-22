@@ -166,17 +166,13 @@ impl StatusNotifierHost {
         tx: tokio::sync::mpsc::Sender<Vec<TrayItem>>,
     ) -> anyhow::Result<()> {
         loop {
-            let old_items: Vec<TrayItem> = self
-                .items
-                .drain()
-                .collect::<HashMap<String, TrayItem>>()
-                .values()
-                .cloned()
-                .collect();
+            // Compare the maps directly; Vec comparison depended on HashMap
+            // iteration order and caused a rebuild on almost every poll.
+            let old_items = std::mem::take(&mut self.items);
             self.fetch_all_items().await;
 
-            let items: Vec<TrayItem> = self.items.values().cloned().collect();
-            if items != old_items {
+            if self.items != old_items {
+                let items: Vec<TrayItem> = self.items.values().cloned().collect();
                 let _ = tx.send(items).await;
             }
 
