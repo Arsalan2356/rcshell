@@ -155,6 +155,11 @@ impl StatusNotifierHost {
         }
     }
 
+    /// The host's session bus connection, shared with the tray click handlers.
+    pub fn connection(&self) -> Connection {
+        self.conn.clone()
+    }
+
     pub fn items(&self) -> &HashMap<String, TrayItem> {
         &self.items
     }

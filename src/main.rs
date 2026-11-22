@@ -284,10 +284,11 @@ fn main() {
             let _ = tray_tx.send(initial).await;
 
             // Updater reads from channel, no host access needed
+            let conn = host.connection();
             let updater = async move {
                 while let Some(items) = tray_rx.recv().await {
                     let refs: Vec<&host::TrayItem> = items.iter().collect();
-                    systray::update_tray(&tray_box, &tray_box_popover, &refs);
+                    systray::update_tray(&tray_box, &tray_box_popover, &refs, &conn);
                 }
             };
 

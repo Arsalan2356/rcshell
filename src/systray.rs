@@ -26,6 +26,7 @@ pub fn update_tray(
     container: &gtk::Box,
     container_popover: &gtk::PopoverMenu,
     items: &[&TrayItem],
+    conn: &Connection,
 ) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
@@ -41,7 +42,7 @@ pub fn update_tray(
             image.set_tooltip_text(Some(&item.tooltip));
         }
 
-        attach_gestures(&image, item, container_popover);
+        attach_gestures(&image, item, container_popover, conn);
         container.append(&image);
     }
 }
@@ -108,16 +109,22 @@ fn build_icon(item: &TrayItem) -> gtk::Image {
     return l;
 }
 
-fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMenu) {
+fn attach_gestures(
+    image: &gtk::Image,
+    item: &TrayItem,
+    popover: &gtk::PopoverMenu,
+    conn: &Connection,
+) {
     let service = item.service.clone();
 
     let left = gtk::GestureClick::new();
     left.set_button(1);
     let svc = service.clone();
+    let left_conn = conn.clone();
     left.connect_released(move |_, _, _, _| {
         let svc = svc.clone();
+        let conn = left_conn.clone();
         glib::spawn_future_local(async move {
-            let conn = Connection::session().await.unwrap();
             let (dest, path) = parse_service(&svc);
             if let Ok(proxy) = Proxy::new(&conn, dest, path, "org.kde.StatusNotifierItem").await {
                 let _result = proxy.call_method("Activate", &(0i32, 0i32)).await;
@@ -129,6 +136,7 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
     right.set_button(3);
     let i = item.clone();
     let p = popover.clone();
+    let right_conn = conn.clone();
     right.connect_released(move |gesture, _, _, _| {
         let Some(widget) = gesture.widget() else {
             return;
@@ -138,10 +146,9 @@ fn attach_gestures(image: &gtk::Image, item: &TrayItem, popover: &gtk::PopoverMe
 
         let i = i.clone();
         let p = p.clone();
+        let conn = right_conn.clone();
 
         glib::spawn_future_local(async move {
-            let conn = Connection::session().await.unwrap();
-
             let (model, action_group) = match create_tray_menu(&conn, &i).await {
                 Ok(result) => result,
                 Err(_) => {
@@ -297,20 +304,15 @@ async fn create_tray_menu(
         let service = item.service.clone();
         let menu_path = menu_path.to_owned();
         let id = action.id;
+        let conn = conn.clone();
 
         gtk_action.connect_activate(move |_, _| {
             let service = service.clone();
             let menu_path = menu_path.clone();
+            let conn = conn.clone();
 
             glib::spawn_future_local(async move {
-                let conn = match Connection::session().await {
-                    Ok(conn) => conn,
-                    Err(_) => {
-                        return;
-                    }
-                };
-
-                if let Err(_) = send_menu_event(&conn, &service, &menu_path, id).await {}
+                let _ = send_menu_event(&conn, &service, &menu_path, id).await;
             });
         });
 
