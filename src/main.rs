@@ -264,7 +264,7 @@ fn main() {
         setup_controllers!(ad, prev, play, next);
 
 
-        let (sender, mut receiver) = mpsc::channel(8);
+        let (sender, mut receiver) = mpsc::unbounded_channel();
 
         let _ = ipc::spawn_event_listener(sender);
 
@@ -564,16 +564,33 @@ fn main() {
             };
 
 
+            let update_title = || {
+                let title = String::from_utf8(Command::new("sh")
+                        .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindowtitle | tostring)'"])
+                        .output()
+                        .expect("failed").stdout).unwrap();
+
+                tbox.set_text(&title::client_title_wrap(title.clone()));
+                tbox.set_tooltip_text(Some(&title.as_str()));
+            };
+
+
             while let Some(msg) = receiver.recv().await {
                 match msg {
-                    HyprEvent::ActiveWindow => {
-                        let title = String::from_utf8(Command::new("sh")
-                                .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindowtitle | tostring)'"])
-                                .output()
-                                .expect("failed").stdout).unwrap();
+                    HyprEvent::WindowTitle { address, title } => {
+                        // Event addresses may lack the "0x" prefix hyprctl uses
+                        let address = address.trim_start_matches("0x");
+                        for i in &imgs {
+                            if i.widget_name().trim_start_matches("0x") == address {
+                                i.set_tooltip_text(Some(&title));
+                            }
+                        }
 
-                        tbox.set_text(&title::client_title_wrap(title.clone()));
-                        tbox.set_tooltip_text(Some(&title.as_str()));
+                        update_title();
+                    }
+
+                    HyprEvent::ActiveWindow => {
+                        update_title();
 
                         let pt = String::from_utf8(Command::new("sh")
                                 .args(["-c", "hyprctl activeworkspace -j | jq -r '(.lastwindow | tostring)'"])
