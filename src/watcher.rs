@@ -14,7 +14,7 @@ impl WatcherState {
         &mut self,
         service: &str,
         #[zbus(header)] header: zbus::message::Header<'_>,
-        #[zbus(signal_context)] ctx: SignalEmitter<'_>,
+        #[zbus(signal_emitter)] ctx: SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         // If service is a path, prepend the sender's unique bus name
         let owned = if service.starts_with('/') {
@@ -36,7 +36,7 @@ impl WatcherState {
     async fn register_status_notifier_host(
         &mut self,
         service: &str,
-        #[zbus(signal_context)] ctx: SignalEmitter<'_>,
+        #[zbus(signal_emitter)] ctx: SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         if self.hosts.insert(service.to_string()) {
             Self::status_notifier_host_registered(&ctx).await?;
@@ -86,9 +86,9 @@ impl StatusNotifierWatcher {
             hosts: HashSet::new(),
         };
 
-        let conn = connection::Builder::session()?
-            .name("org.kde.StatusNotifierWatcher")?
-            .serve_at("/StatusNotifierWatcher", state)?
+        let conn = connection::Builder::session()
+            .name("org.kde.StatusNotifierWatcher")
+            .serve_at("/StatusNotifierWatcher", state)
             .build()
             .await?;
 

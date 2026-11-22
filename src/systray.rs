@@ -5,9 +5,9 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk};
 use std::collections::HashMap;
 use zbus::{Connection, Proxy};
-use zvariant::OwnedValue;
+use zbus::OwnedVariant;
 
-type RawMenuItem = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
+type RawMenuItem = (i32, HashMap<String, OwnedVariant>, Vec<OwnedVariant>);
 
 type RawGetLayout = (u32, RawMenuItem);
 
@@ -221,11 +221,11 @@ async fn get_menu_layout(
 
     Ok(result)
 }
-fn property_string(props: &HashMap<String, OwnedValue>, name: &str) -> Option<String> {
+fn property_string(props: &HashMap<String, OwnedVariant>, name: &str) -> Option<String> {
     props.get(name).and_then(|v| v.clone().try_into().ok())
 }
 
-fn property_bool(props: &HashMap<String, OwnedValue>, name: &str) -> Option<bool> {
+fn property_bool(props: &HashMap<String, OwnedVariant>, name: &str) -> Option<bool> {
     props.get(name).and_then(|v| v.clone().try_into().ok())
 }
 
@@ -334,7 +334,7 @@ async fn send_menu_event(
     let (dest, _) = parse_service(service);
     let proxy = Proxy::new(conn, dest, menu_path, "com.canonical.dbusmenu").await?;
 
-    let data = zvariant::OwnedValue::from(0u32);
+    let data = OwnedVariant::from(0u32);
 
     proxy
         .call_method("Event", &(id, "clicked", data, 0u32))

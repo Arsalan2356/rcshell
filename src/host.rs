@@ -120,7 +120,7 @@ impl StatusNotifierHost {
             .collect();
 
         let menu_path: Option<String> = proxy
-            .get_property::<zbus::zvariant::OwnedObjectPath>("Menu")
+            .get_property::<zbus::OwnedObjectPath>("Menu")
             .await
             .ok()
             .map(|p| p.to_string())
