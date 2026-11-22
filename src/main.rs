@@ -555,7 +555,7 @@ fn main() {
                             if i.widget_name().as_str() == pt.trim() {
                                 i.add_css_class("active");
                                 animate_pixel_size(i, i.pixel_size(), 36);
-                                i.set_size_request(48, 36);
+                                i.set_size_request(36, 36);
                             }
                             else if i.css_classes().contains(&GString::from_string_checked("active".to_string()).unwrap()) {
                                 i.remove_css_class("active");
