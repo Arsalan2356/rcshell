@@ -658,8 +658,6 @@ fn main() {
                     }
                 }
             }
-
-            glib::timeout_future(Duration::from_millis(30)).await;
         });
 
         // Nix Flake

@@ -13,7 +13,7 @@ pub fn client_title_wrap(s: String) -> String {
         format!(" ")
     } else if s.contains("Thunar") {
         let index = s.find("Thunar").unwrap() - 3;
-        format!(" {}", s.get(0..index).unwrap())
+        format!(" {}", s.get(0..index).unwrap_or(""))
     } else {
         s
     };
