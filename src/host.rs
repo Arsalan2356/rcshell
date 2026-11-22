@@ -55,23 +55,6 @@ impl StatusNotifierHost {
         .await?)
     }
 
-    async fn get_service_pid(conn: &Connection, service: &str) -> zbus::Result<u32> {
-        let (dest, _) = service
-            .split_once('/')
-            .map(|(d, p)| (d, p))
-            .unwrap_or((service, ""));
-
-        let proxy = Proxy::new(
-            conn,
-            "org.freedesktop.DBus",
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-        )
-        .await?;
-
-        proxy.call("GetConnectionUnixProcessID", &(dest,)).await
-    }
-
     async fn connection_exists(conn: &Connection, service: &str) -> zbus::Result<bool> {
         let (dest, _) = service.split_once('/').unwrap_or((service, ""));
 
@@ -87,18 +70,10 @@ impl StatusNotifierHost {
     }
 
     async fn add_item(&mut self, service: String) {
-        let exists = Self::connection_exists(&self.conn, &service).await;
-        if let Ok(true) = exists {
-            // Don't add it
-            match Self::get_service_pid(&self.conn, &service).await {
-                Ok(_) => match Self::fetch_item(&self.conn, &service).await {
-                    Ok(item) => {
-                        self.items.insert(service, item);
-                    }
-                    Err(_) => {}
-                },
-
-                Err(_) => {}
+        // Skip items whose owner has gone away
+        if let Ok(true) = Self::connection_exists(&self.conn, &service).await {
+            if let Ok(item) = Self::fetch_item(&self.conn, &service).await {
+                self.items.insert(service, item);
             }
         }
     }
