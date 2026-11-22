@@ -36,13 +36,6 @@ window {
     padding-right: 5px;
 }
 
-.launcher {
-    padding-left: 4px;
-    padding-top: 4pt;
-    padding-bottom: 4pt;
-    color: var(--text);
-}
-
 .workspaces {
     padding-top: 2px;
     min-height: 28px;
@@ -79,10 +72,6 @@ window {
     font-size: 10pt;
 }
 
-.clients {
-    padding: 0 1px;
-}
-
 .baseclient {
     &.clientchild {
         border: none;
@@ -97,15 +86,10 @@ window {
     }
 }
 
-.inline {
-    background-color: transparent;
-    padding: 0px;
-}
-
 .systray {
     padding: 0 4px;
 
-    .trayitem {
+    .systrayitem {
         padding: 2px 3px;
         border-radius: 4px;
         transition: background 0.15s ease;

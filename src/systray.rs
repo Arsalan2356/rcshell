@@ -102,7 +102,6 @@ fn build_icon(item: &TrayItem) -> gtk::Image {
 
     l.add_css_class("systrayitem");
     l.set_pixel_size(12);
-    l.set_size_request(12, 12);
     l.set_valign(gtk::Align::Center);
     l.set_halign(gtk::Align::Center);
     l.set_tooltip_text(Some(&item.tooltip));

@@ -14,7 +14,7 @@ pub fn current_time() -> String {
 pub fn time() -> gtk::Label {
     let container = gtk::Label::new(Some(&current_time()));
     container.add_css_class("custom_b");
-    container.add_css_class("volume");
+    container.add_css_class("time");
     let popover = gtk::Popover::new();
     popover.set_has_arrow(false);
     popover.set_parent(&container);
