@@ -157,7 +157,12 @@ fn attach_gestures(
             };
 
             p.set_menu_model(Some(&model));
-            p.set_height_request(model.n_items() * 65);
+
+            // Size the popover to its content: clear the previous menu's
+            // request first, since it acts as a minimum when measuring.
+            p.set_height_request(-1);
+            let (_, natural, _, _) = p.measure(gtk::Orientation::Vertical, -1);
+            p.set_height_request(natural);
 
             p.insert_action_group("menu", None::<&gio::ActionGroup>);
             p.insert_action_group("menu", Some(&action_group));
