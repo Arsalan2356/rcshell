@@ -5,6 +5,8 @@ use std::process::Command;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
+use crate::spawn_reaped;
+
 static PROFILE_MAP: phf::Map<&'static str, &'static str> = phf_map! {
         "a2dp-sink" => "AAC",
         "a2dp-sink-sbc" => "SBC",
@@ -70,10 +72,9 @@ pub fn context_menu(label: &gtk::Label) {
             let weak_ref = popover.downgrade();
 
             btn.connect_clicked(move |btn| {
-                let _status = Command::new("pactl")
-                    .args(["set-card-profile", &n2, btn.widget_name().as_str()])
-                    .status()
-                    .is_ok();
+                let mut cmd = Command::new("pactl");
+                cmd.args(["set-card-profile", &n2, btn.widget_name().as_str()]);
+                spawn_reaped(cmd);
 
                 // Dismiss the popover by walking up to it
                 if let Some(popover) = weak_ref.upgrade() {

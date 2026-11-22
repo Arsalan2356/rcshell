@@ -1,7 +1,11 @@
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
+
+/// Set when the last call refreshed the icon database; it's refreshed every other call.
+static DB_REFRESHED_LAST: AtomicBool = AtomicBool::new(false);
 
 pub fn clients() -> Vec<gtk::Image> {
     let mut start_data: Vec<gtk::Image> = vec![];
@@ -16,7 +20,9 @@ pub fn clients() -> Vec<gtk::Image> {
 
     let active_workspace = o2.get(0).unwrap().parse::<usize>().unwrap();
 
-    let _ = Command::new("iconfinderdb").output().is_ok();
+    if !DB_REFRESHED_LAST.fetch_xor(true, Ordering::Relaxed) {
+        let _ = Command::new("iconfinderdb").output();
+    }
 
     let mut v: Vec<&str> = output.lines().collect();
     v.sort_by_key(|x| {

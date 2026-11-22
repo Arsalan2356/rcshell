@@ -312,9 +312,37 @@ fn main() {
 
 
 
-        // Background tasks
-        // 233 ms on average
+        // Bluetooth battery: slow to query and changes slowly, so it runs in its
+        // own loop with the command on a worker thread.
         glib::MainContext::default().spawn_local(async move {
+            loop {
+                let v = gio::spawn_blocking(|| {
+                    Command::new("btbattery")
+                        .output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                        .unwrap_or_default()
+                })
+                .await
+                .unwrap_or_default();
+
+                debug_println!("btbattery returned {}", v);
+
+                let val = bluetooth::battery_label(&v);
+
+                debug_println!("btbattery val is {}", val);
+
+                bt.set_text(&val);
+
+                glib::timeout_future(Duration::from_secs(10)).await;
+            }
+        });
+
+        // Background tasks
+        glib::MainContext::default().spawn_local(async move {
+            // Only reload the player icons when the player or its state changes.
+            let mut last_player = String::new();
+            let mut last_playing: Option<bool> = None;
+
             loop {
                 // Audio Player
                 let output =
@@ -324,7 +352,17 @@ fn main() {
 
                 ad.set_reveal_child(!clients.is_empty());
 
+                if clients.is_empty() {
+                    last_player.clear();
+                    last_playing = None;
+                }
+
                 if let Some(ci) = audio::current_player(&ad, &clients) {
+                    let player_changed = last_player != clients[ci];
+                    if player_changed {
+                        last_player = clients[ci].to_string();
+                    }
+
                     let inbox = ad.child().unwrap().downcast::<gtk::Box>().unwrap();
 
                     let is_playing = {
@@ -343,21 +381,26 @@ fn main() {
                     let cbox = inner_revealer.child().unwrap().downcast::<gtk::CenterBox>().unwrap();
                     let play_widget = cbox.center_widget().unwrap().downcast::<gtk::Image>().unwrap();
 
-                    play_widget.set_from_file(Some(format!(
-                            "/home/rc/default/assets/{}.svg",
-                            if is_playing { "pause" } else { "play" }
-                        )));
-                    play_widget.set_pixel_size(22);
+                    if player_changed || last_playing != Some(is_playing) {
+                        last_playing = Some(is_playing);
+                        play_widget.set_from_file(Some(format!(
+                                "/home/rc/default/assets/{}.svg",
+                                if is_playing { "pause" } else { "play" }
+                            )));
+                        play_widget.set_pixel_size(22);
+                    }
 
-                    let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
-                    let base_img = get_player_img(ci, &clients);
-                    let svg = inject_outline_style(&base_img, "#c0caf5");
-                    let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
-                    loader.write(svg.as_bytes()).expect("Failed to load svg");
-                    loader.close().expect("Failed to close loader");
+                    if player_changed {
+                        let img = inbox.first_child().unwrap().next_sibling().unwrap().downcast::<gtk::Image>().unwrap();
+                        let base_img = get_player_img(ci, &clients);
+                        let svg = inject_outline_style(&base_img, "#c0caf5");
+                        let loader = PixbufLoader::with_type("svg").expect("Failed to create loader");
+                        loader.write(svg.as_bytes()).expect("Failed to load svg");
+                        loader.close().expect("Failed to close loader");
 
-                    let px = loader.pixbuf().expect("Failed to create pixbuf");
-                    img.set_from_pixbuf(Some(&px));
+                        let px = loader.pixbuf().expect("Failed to create pixbuf");
+                        img.set_from_pixbuf(Some(&px));
+                    }
                 }
 
 
@@ -378,19 +421,6 @@ fn main() {
                 debug_println!("wpctl val is {}", val);
 
                 vol.set_text(&val);
-
-
-                // Bluetooth
-                let v = String::from_utf8(Command::new("btbattery").output().unwrap().stdout).unwrap();
-
-                debug_println!("btbattery returned {}", v);
-
-                let val = bluetooth::battery_label(&v);
-
-                debug_println!("btbattery val is {}", val);
-
-                bt.set_text(&val);
-
 
 
                 // Audio Profile
@@ -424,7 +454,7 @@ fn main() {
                     pf.remove_css_class("vc");
                 }
 
-                glib::timeout_future(Duration::from_millis(150)).await;
+                glib::timeout_future(Duration::from_millis(50)).await;
             }
         });
 
